@@ -1,5 +1,7 @@
 package agents
 
+import "time"
+
 // WorkerUpdate is a message sent from a worker goroutine to the orchestrator.
 type WorkerUpdate struct {
 	WorkerID string
@@ -7,21 +9,30 @@ type WorkerUpdate struct {
 	Content  string
 	Error    error
 	Usage    UsageInfo
+	DiffInfo *DiffInfo // populated when Type == UpdateDiffResult
 }
 
 type UpdateType int
 
 const (
-	UpdateDelta     UpdateType = iota // streaming text delta
-	UpdateToolCall                    // tool call started
-	UpdateToolResult                  // tool call completed
-	UpdateCompleted                   // worker finished
-	UpdateError                       // worker encountered an error
+	UpdateDelta      UpdateType = iota // streaming text delta
+	UpdateToolCall                     // tool call started
+	UpdateToolResult                   // tool call completed
+	UpdateDiffResult                   // diff result from git
+	UpdateCompleted                    // worker finished
+	UpdateError                        // worker encountered an error
 )
 
 type UsageInfo struct {
 	InputTokens  int
 	OutputTokens int
+}
+
+// DiffInfo contains git diff output for a file edit operation.
+type DiffInfo struct {
+	FilePath  string
+	DiffText  string
+	Timestamp time.Time
 }
 
 // Subtask is a unit of work assigned to a worker agent.
