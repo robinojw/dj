@@ -2,6 +2,7 @@ package screens
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -155,6 +156,19 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 		m.buffer.Reset()
 		m.streaming = false
 		m.updateViewport()
+
+	case StreamDiffMsg:
+		diff := CollapsibleDiff{
+			ID:        fmt.Sprintf("diff-%d", time.Now().UnixNano()),
+			FilePath:  msg.FilePath,
+			DiffLines: parseDiffLines(msg.DiffText),
+			Expanded:  false, // collapsed by default
+			Timestamp: msg.Timestamp,
+		}
+		m.diffs = append(m.diffs, diff)
+		m.focusedDiffIndex = len(m.diffs) - 1 // auto-focus latest
+		m.viewportMode = "diff_nav"
+		m.updateViewport()
 	}
 
 	// Update sub-components
@@ -220,4 +234,12 @@ func (m *ChatModel) SetMode(mode agents.AgentMode) {
 
 func (m *ChatModel) SetModel(model string) {
 	m.statusBar.Model = model
+}
+
+// parseDiffLines splits git diff output into individual lines.
+func parseDiffLines(diffText string) []string {
+	if diffText == "" {
+		return []string{}
+	}
+	return strings.Split(diffText, "\n")
 }
