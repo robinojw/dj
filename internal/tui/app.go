@@ -109,6 +109,20 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.debugOverlay.SetSize(msg.Width, msg.Height)
 
 	case tea.KeyMsg:
+		// Route key events to turbo modal when visible
+		if a.turboModal.Visible() {
+			a.turboModal = a.turboModal.HandleKey(msg)
+			if !a.turboModal.Visible() {
+				if a.turboModal.Confirmed() {
+					a.turboConfirmed = true
+					a.mode = modes.ModeTurbo
+					a.gate.SetMode(modes.ModeTurbo)
+					a.chat.SetMode(modes.ModeTurbo)
+				}
+			}
+			return a, nil
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "ctrl+q":
 			return a, tea.Quit
@@ -128,7 +142,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.screen != ScreenTeam {
 				return a, a.pushScreen(ScreenTeam)
 			}
-		case "ctrl+/":
+		case "ctrl+_":
 			a.cycleModel()
 			return a, nil
 		case "ctrl+d":
@@ -142,18 +156,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Check if switching to Turbo
 			if newMode == modes.ModeTurbo && !a.turboConfirmed {
 				a.turboModal.Show()
-				respCh := make(chan bool, 1)
-				a.turboModal.SetResponseChannel(respCh)
-
-				go func() {
-					confirmed := <-respCh
-					if confirmed {
-						a.turboConfirmed = true
-						a.mode = modes.ModeTurbo
-						a.gate.SetMode(modes.ModeTurbo)
-						a.chat.SetMode(modes.ModeTurbo)
-					}
-				}()
 				return a, nil
 			}
 
@@ -263,6 +265,14 @@ func (a App) View() string {
 		base = a.skillBrowser.View()
 	default:
 		base = a.chat.View()
+	}
+
+	// Overlay modals when visible
+	if a.turboModal.Visible() {
+		base = lipgloss.JoinVertical(lipgloss.Left, a.turboModal.View(), base)
+	}
+	if a.permissionModal.Visible() {
+		base = lipgloss.JoinVertical(lipgloss.Left, a.permissionModal.View(), base)
 	}
 
 	if a.debugMode {

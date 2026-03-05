@@ -9,9 +9,9 @@ import (
 )
 
 type TurboModal struct {
-	visible bool
-	respCh  chan bool
-	theme   *theme.Theme
+	visible   bool
+	confirmed bool
+	theme     *theme.Theme
 }
 
 func NewTurboModal(t *theme.Theme) TurboModal {
@@ -22,14 +22,33 @@ func NewTurboModal(t *theme.Theme) TurboModal {
 
 func (m *TurboModal) Show() {
 	m.visible = true
+	m.confirmed = false
 }
 
 func (m TurboModal) Visible() bool {
 	return m.visible
 }
 
-func (m *TurboModal) SetResponseChannel(ch chan bool) {
-	m.respCh = ch
+func (m TurboModal) Confirmed() bool {
+	return m.confirmed
+}
+
+// HandleKey processes a key event and returns the updated modal.
+func (m TurboModal) HandleKey(msg tea.KeyMsg) TurboModal {
+	if !m.visible {
+		return m
+	}
+
+	switch msg.String() {
+	case "y":
+		m.confirmed = true
+		m.visible = false
+	case "n", "esc":
+		m.confirmed = false
+		m.visible = false
+	}
+
+	return m
 }
 
 func (m TurboModal) Update(msg tea.Msg) (TurboModal, tea.Cmd) {
@@ -39,21 +58,8 @@ func (m TurboModal) Update(msg tea.Msg) (TurboModal, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "y":
-			if m.respCh != nil {
-				m.respCh <- true
-			}
-			m.visible = false
-			return m, nil
-
-		case "n", "esc":
-			if m.respCh != nil {
-				m.respCh <- false
-			}
-			m.visible = false
-			return m, nil
-		}
+		m = m.HandleKey(msg)
+		return m, nil
 	}
 
 	return m, nil
