@@ -102,3 +102,65 @@ func hasSubstr(s, substr string) bool {
 	}
 	return false
 }
+
+func TestExtractFilePath(t *testing.T) {
+	tests := []struct {
+		name   string
+		args   map[string]any
+		want   string
+		wantOk bool
+	}{
+		{
+			name:   "nil args",
+			args:   nil,
+			want:   "",
+			wantOk: false,
+		},
+		{
+			name:   "empty args",
+			args:   map[string]any{},
+			want:   "",
+			wantOk: false,
+		},
+		{
+			name:   "file_path key",
+			args:   map[string]any{"file_path": "test.go"},
+			want:   "test.go",
+			wantOk: true,
+		},
+		{
+			name:   "path key",
+			args:   map[string]any{"path": "test.go"},
+			want:   "test.go",
+			wantOk: true,
+		},
+		{
+			name:   "filepath key",
+			args:   map[string]any{"filepath": "test.go"},
+			want:   "test.go",
+			wantOk: true,
+		},
+		{
+			name:   "non-string value",
+			args:   map[string]any{"file_path": 123},
+			want:   "",
+			wantOk: false,
+		},
+		{
+			name:   "empty string value",
+			args:   map[string]any{"file_path": ""},
+			want:   "",
+			wantOk: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, gotOk := extractFilePath(tt.args)
+			if got != tt.want || gotOk != tt.wantOk {
+				t.Errorf("extractFilePath() = (%q, %v), want (%q, %v)",
+					got, gotOk, tt.want, tt.wantOk)
+			}
+		})
+	}
+}
