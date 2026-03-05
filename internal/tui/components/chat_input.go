@@ -14,6 +14,7 @@ type InputMode int
 const (
 	ModeNormal InputMode = iota
 	ModeSkillComplete
+	ModeMentionComplete // @ trigger
 )
 
 // SkillSuggestion is a single autocomplete candidate.
@@ -112,6 +113,13 @@ func (c ChatInput) Update(msg tea.Msg) (ChatInput, tea.Cmd) {
 	} else if c.mode == ModeSkillComplete {
 		c.mode = ModeNormal
 		c.suggestions = nil
+	}
+
+	// Check for @ trigger (mention mode)
+	if strings.HasSuffix(val, "@") && c.mode == ModeNormal {
+		c.mode = ModeMentionComplete
+	} else if c.mode == ModeMentionComplete && !strings.Contains(val, "@") {
+		c.mode = ModeNormal
 	}
 
 	return c, cmd
