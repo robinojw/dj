@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/config"
 	"github.com/robinojw/dj/internal/api"
+	"github.com/robinojw/dj/internal/hooks"
 	"github.com/robinojw/dj/internal/lsp"
 	"github.com/robinojw/dj/internal/mcp"
 	"github.com/robinojw/dj/internal/memory"
@@ -77,6 +78,18 @@ func main() {
 	// Set up memory manager
 	memMgr := memory.DefaultManager()
 	_ = memMgr // will be wired to app in future steps
+
+	// Set up event hooks
+	hookRunner := hooks.NewRunner(hooks.Config{
+		Hooks: map[string]string{
+			string(hooks.HookPreToolCall):  cfg.Hooks.PreToolCall,
+			string(hooks.HookPostToolCall): cfg.Hooks.PostToolCall,
+			string(hooks.HookOnError):      cfg.Hooks.OnError,
+			string(hooks.HookSessionEnd):   cfg.Hooks.OnSessionEnd,
+		},
+	})
+	defer hookRunner.Fire(hooks.HookSessionEnd, map[string]string{"summary": "session ended"})
+	_ = hookRunner // will be wired to app in future steps
 
 	app := tui.NewApp(t, client, tracker, cfg.Model.Default)
 

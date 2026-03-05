@@ -13,6 +13,14 @@ type Config struct {
 	MCP    MCPConfig    `toml:"mcp"`
 	Skills SkillsConfig `toml:"skills"`
 	LSP    LSPConfig    `toml:"lsp"`
+	Hooks  HooksConfig  `toml:"hooks"`
+}
+
+type HooksConfig struct {
+	PreToolCall  string `toml:"pre_tool_call"`
+	PostToolCall string `toml:"post_tool_call"`
+	OnError      string `toml:"on_error"`
+	OnSessionEnd string `toml:"on_session_end"`
 }
 
 type LSPConfig struct {

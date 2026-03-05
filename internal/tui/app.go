@@ -8,6 +8,7 @@ import (
 	"github.com/robinojw/dj/internal/agents"
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/checkpoint"
+	"github.com/robinojw/dj/internal/hooks"
 	"github.com/robinojw/dj/internal/tui/screens"
 	"github.com/robinojw/dj/internal/tui/theme"
 )
@@ -38,6 +39,7 @@ type App struct {
 	model        string
 	mode         agents.AgentMode
 	checkpoints  *checkpoint.Manager
+	hooks        *hooks.Runner
 	width        int
 	height       int
 }
