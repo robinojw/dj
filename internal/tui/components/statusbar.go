@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dustin/go-humanize"
+	"github.com/robinojw/dj/internal/modes"
 	"github.com/robinojw/dj/internal/tui/theme"
 )
 
@@ -15,7 +16,7 @@ type StatusBar struct {
 	OutputTokens   int
 	CumulativeCost float64
 	ActiveMCPs     []string
-	Mode           string // "Build", "Plan"
+	Mode           modes.ExecutionMode
 	LSPServer      string // e.g. "gopls"
 	Compacting     bool
 	Width          int
@@ -42,10 +43,8 @@ func (s StatusBar) View() string {
 		mcpBadges = " " + strings.Join(badges, " ")
 	}
 
-	var modeBadge string
-	if s.Mode != "" {
-		modeBadge = s.Theme.BadgeStyle().Render(s.Mode) + "  "
-	}
+	modeStyle := s.getModeStyle()
+	modeBadge := modeStyle.Render(s.Mode.StatusLabel()) + "  "
 
 	var lspBadge string
 	if s.LSPServer != "" {
@@ -70,6 +69,21 @@ func (s StatusBar) View() string {
 	return s.Theme.StatusStyle().
 		Width(s.Width).
 		Render(content)
+}
+
+func (s StatusBar) getModeStyle() lipgloss.Style {
+	switch s.Mode {
+	case modes.ModeTurbo:
+		return s.Theme.ErrorStyle() // red
+	case modes.ModePlan:
+		return s.Theme.PrimaryStyle().Bold(true) // blue
+	case modes.ModeConfirm:
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(s.Theme.Colors.Warning)).
+			Bold(true) // amber
+	default:
+		return lipgloss.NewStyle()
+	}
 }
 
 func progressBar(pct float64, width int, t *theme.Theme) string {

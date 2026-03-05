@@ -5,10 +5,12 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/robinojw/dj/internal/agents"
+	"github.com/robinojw/dj/config"
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/checkpoint"
 	"github.com/robinojw/dj/internal/hooks"
+	"github.com/robinojw/dj/internal/modes"
+	"github.com/robinojw/dj/internal/tui/components"
 	"github.com/robinojw/dj/internal/tui/screens"
 	"github.com/robinojw/dj/internal/tui/theme"
 )
@@ -26,22 +28,27 @@ const (
 
 // App is the root bubbletea model.
 type App struct {
-	screen       Screen
-	screenStack  []Screen
-	chat         screens.ChatModel
-	team         screens.TeamModel
-	enhance      screens.EnhanceModel
-	mcpManager   screens.MCPManagerModel
-	skillBrowser screens.SkillBrowserModel
-	theme        *theme.Theme
-	tracker      *api.Tracker
-	client       *api.ResponsesClient
-	model        string
-	mode         agents.AgentMode
-	checkpoints  *checkpoint.Manager
-	hooks        *hooks.Runner
-	width        int
-	height       int
+	screen          Screen
+	screenStack     []Screen
+	chat            screens.ChatModel
+	team            screens.TeamModel
+	enhance         screens.EnhanceModel
+	mcpManager      screens.MCPManagerModel
+	skillBrowser    screens.SkillBrowserModel
+	theme           *theme.Theme
+	tracker         *api.Tracker
+	client          *api.ResponsesClient
+	model           string
+	mode            modes.ExecutionMode
+	gate            *modes.Gate
+	permissionModal components.PermissionModal
+	turboModal      components.TurboModal
+	turboConfirmed  bool
+	permRequestCh   chan modes.PermissionRequest
+	checkpoints     *checkpoint.Manager
+	hooks           *hooks.Runner
+	width           int
+	height          int
 }
 
 // NewApp creates the root application model.
@@ -50,19 +57,31 @@ func NewApp(
 	client *api.ResponsesClient,
 	tracker *api.Tracker,
 	model string,
+	cfg config.Config,
 ) App {
+	gate := modes.NewGate(
+		modes.ModeConfirm,
+		cfg.Execution.Allow.Tools,
+		cfg.Execution.Deny.Tools,
+	)
+
 	return App{
-		screen:       ScreenChat,
-		chat:         screens.NewChatModel(t),
-		team:         screens.NewTeamModel(t),
-		enhance:      screens.NewEnhanceModel(t),
-		mcpManager:   screens.NewMCPManagerModel(t),
-		skillBrowser: screens.NewSkillBrowserModel(t),
-		theme:        t,
-		tracker:      tracker,
-		client:       client,
-		model:        model,
-		checkpoints:  checkpoint.NewManager(20),
+		screen:          ScreenChat,
+		chat:            screens.NewChatModel(t),
+		team:            screens.NewTeamModel(t),
+		enhance:         screens.NewEnhanceModel(t),
+		mcpManager:      screens.NewMCPManagerModel(t),
+		skillBrowser:    screens.NewSkillBrowserModel(t),
+		theme:           t,
+		tracker:         tracker,
+		client:          client,
+		model:           model,
+		mode:            modes.ModeConfirm,
+		gate:            gate,
+		permissionModal: components.NewPermissionModal(t),
+		turboModal:      components.NewTurboModal(t),
+		permRequestCh:   make(chan modes.PermissionRequest, 10),
+		checkpoints:     checkpoint.NewManager(20),
 	}
 }
 
@@ -97,12 +116,30 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, a.pushScreen(ScreenTeam)
 			}
 		case "tab":
-			if a.mode == agents.ModeBuild {
-				a.mode = agents.ModePlan
-			} else {
-				a.mode = agents.ModeBuild
+			// Cycle: Confirm → Plan → Turbo → Confirm
+			newMode := (a.mode + 1) % 3
+
+			// Check if switching to Turbo
+			if newMode == modes.ModeTurbo && !a.turboConfirmed {
+				a.turboModal.Show()
+				respCh := make(chan bool, 1)
+				a.turboModal.SetResponseChannel(respCh)
+
+				go func() {
+					confirmed := <-respCh
+					if confirmed {
+						a.turboConfirmed = true
+						a.mode = modes.ModeTurbo
+						a.gate.SetMode(modes.ModeTurbo)
+						a.chat.SetMode(modes.ModeTurbo)
+					}
+				}()
+				return a, nil
 			}
-			a.chat.SetMode(a.mode)
+
+			a.mode = newMode
+			a.gate.SetMode(newMode)
+			a.chat.SetMode(newMode)
 			return a, nil
 		case "ctrl+z":
 			cp := a.checkpoints.Pop()
@@ -125,6 +162,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case screens.TeamSpawnedMsg:
 		return a, a.pushScreen(ScreenTeam)
+
+	case modes.PermissionRequest:
+		var cmd tea.Cmd
+		a.permissionModal, cmd = a.permissionModal.Update(msg)
+		return a, cmd
 	}
 
 	// Delegate to the active screen

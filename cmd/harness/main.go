@@ -91,7 +91,7 @@ func main() {
 	defer hookRunner.Fire(hooks.HookSessionEnd, map[string]string{"summary": "session ended"})
 	_ = hookRunner // will be wired to app in future steps
 
-	app := tui.NewApp(t, client, tracker, cfg.Model.Default)
+	app := tui.NewApp(t, client, tracker, cfg.Model.Default, cfg)
 
 	p := tea.NewProgram(app,
 		tea.WithAltScreen(),

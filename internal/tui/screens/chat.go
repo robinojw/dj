@@ -192,5 +192,5 @@ func (m *ChatModel) SetActiveMCPs(names []string) {
 
 func (m *ChatModel) SetMode(mode agents.AgentMode) {
 	m.Mode = mode
-	m.statusBar.Mode = mode.String()
+	m.statusBar.Mode = mode
 }
