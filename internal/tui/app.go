@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -52,6 +53,10 @@ type App struct {
 	debugMode       bool
 	width           int
 	height          int
+
+	// Active stream state
+	streamChunks <-chan api.ResponseChunk
+	streamErrs   <-chan error
 }
 
 // NewApp creates the root application model.
@@ -172,15 +177,41 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case screens.SubmitMsg:
-		return a, a.handleSubmit(msg.Text)
+		cmd := a.handleSubmit(msg.Text)
+		return a, cmd
 
-	case screens.TeamSpawnedMsg:
-		return a, a.pushScreen(ScreenTeam)
+	case screens.StreamDeltaMsg:
+		// Forward to chat screen AND continue reading stream
+		var chatCmd tea.Cmd
+		a.chat, chatCmd = a.chat.Update(msg)
+
+		// If stream is still active, read next chunk
+		if a.streamChunks != nil {
+			return a, tea.Batch(chatCmd, waitForStreamMessage(a.streamChunks, a.streamErrs))
+		}
+		return a, chatCmd
+
+	case screens.StreamDoneMsg:
+		// Stream completed successfully, clear state
+		a.streamChunks = nil
+		a.streamErrs = nil
+		var chatCmd tea.Cmd
+		a.chat, chatCmd = a.chat.Update(msg)
+		return a, chatCmd
 
 	case screens.StreamErrorMsg:
+		// Stream errored, clear state
+		a.streamChunks = nil
+		a.streamErrs = nil
 		if a.debugMode {
 			a.debugOverlay.AddError(msg.Err.Error())
 		}
+		var chatCmd tea.Cmd
+		a.chat, chatCmd = a.chat.Update(msg)
+		return a, chatCmd
+
+	case screens.TeamSpawnedMsg:
+		return a, a.pushScreen(ScreenTeam)
 
 	case modes.PermissionRequest:
 		var cmd tea.Cmd
@@ -273,35 +304,93 @@ func (a *App) cycleModel() {
 }
 
 func (a *App) handleSubmit(text string) tea.Cmd {
+	req := api.CreateResponseRequest{
+		Model: a.model,
+		Input: api.MakeStringInput(text),
+		Reasoning: &api.Reasoning{
+			Effort: "medium",
+		},
+		Stream: true,
+	}
+
+	if a.debugMode {
+		a.debugOverlay.AddInfo(fmt.Sprintf("Starting stream with model: %s", a.model))
+	}
+
+	ctx := context.Background()
+	chunks, errs := a.client.Stream(ctx, req)
+
+	// Store channels for continued reading
+	a.streamChunks = chunks
+	a.streamErrs = errs
+
+	// Return command to wait for first chunk/error
+	return waitForStreamMessage(chunks, errs)
+}
+
+// waitForStreamMessage returns a command that waits for the next chunk or error
+func waitForStreamMessage(chunks <-chan api.ResponseChunk, errs <-chan error) tea.Cmd {
 	return func() tea.Msg {
-		req := api.CreateResponseRequest{
-			Model: a.model,
-			Input: api.MakeStringInput(text),
-			Reasoning: &api.Reasoning{
-				Effort: "medium",
-			},
-			Stream: true,
-		}
-
-		ctx := context.Background()
-		chunks, errs := a.client.Stream(ctx, req)
-
-		// Process stream in a goroutine, emitting tea messages
-		go func() {
-			for chunk := range chunks {
-				switch chunk.Type {
-				case "response.output_text.delta":
-					// We can't directly send tea messages from here;
-					// the real integration uses tea.Program.Send()
-					_ = chunk.Delta
+		select {
+		case chunk, ok := <-chunks:
+			if !ok {
+				// Chunks channel closed, check for final errors
+				select {
+				case err := <-errs:
+					// Provide more helpful error messages
+					errMsg := err.Error()
+					if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "authentication") {
+						return screens.StreamErrorMsg{
+							Err: fmt.Errorf("authentication failed: check OPENAI_API_KEY environment variable"),
+						}
+					} else if strings.Contains(errMsg, "404") {
+						return screens.StreamErrorMsg{
+							Err: fmt.Errorf("model not found: check model name in config (current: see debug overlay)"),
+						}
+					} else if strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "deadline") {
+						return screens.StreamErrorMsg{
+							Err: fmt.Errorf("request timeout: API server took too long to respond"),
+						}
+					}
+					return screens.StreamErrorMsg{Err: fmt.Errorf("API error: %w", err)}
+				default:
+					// Stream completed successfully
+					return screens.StreamDoneMsg{Usage: api.Usage{}}
 				}
 			}
-			// Check for errors
-			for err := range errs {
-				_ = err
-			}
-		}()
 
-		return nil
+			// Process chunk based on type
+			switch chunk.Type {
+			case "response.output_text.delta":
+				if chunk.Delta != "" {
+					return screens.StreamDeltaMsg{Delta: chunk.Delta}
+				}
+			case "response.completed":
+				if chunk.Response != nil {
+					return screens.StreamDoneMsg{Usage: chunk.Response.Usage}
+				}
+			}
+
+			// Got a chunk but didn't return a message (unknown type), try again
+			return waitForStreamMessage(chunks, errs)()
+
+		case err, ok := <-errs:
+			if ok {
+				// Provide helpful error context
+				errMsg := err.Error()
+				if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "authentication") {
+					return screens.StreamErrorMsg{
+						Err: fmt.Errorf("authentication failed: check OPENAI_API_KEY environment variable"),
+					}
+				} else if strings.Contains(errMsg, "connection refused") {
+					return screens.StreamErrorMsg{
+						Err: fmt.Errorf("cannot connect to API: check network and base URL"),
+					}
+				}
+				return screens.StreamErrorMsg{Err: fmt.Errorf("stream error: %w", err)}
+			}
+			// Error channel closed with no error
+			return screens.StreamDoneMsg{Usage: api.Usage{}}
+		}
 	}
 }
