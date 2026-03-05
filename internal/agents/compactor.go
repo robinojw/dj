@@ -43,7 +43,7 @@ func (c *Compactor) Compact(ctx context.Context, history []Turn) (string, error)
 	prompt := buildCompactionPrompt(history)
 
 	req := api.CreateResponseRequest{
-		Model:        "gpt-5.1-codex-mini",
+		Model:        "o4-mini",
 		Input:        api.MakeStringInput(prompt),
 		Instructions: compactionInstructions,
 		Reasoning: &api.Reasoning{

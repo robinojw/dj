@@ -125,7 +125,7 @@ DJ reads from two locations:
 
 ```toml
 [model]
-default = "gpt-5.1-codex-mini"
+default = "gpt-5.4"
 reasoning_effort = "medium"
 team_threshold = 3  # Spawn team view after 3 subtasks
 

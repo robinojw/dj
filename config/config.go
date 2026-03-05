@@ -73,7 +73,7 @@ type SkillsConfig struct {
 func DefaultConfig() Config {
 	return Config{
 		Model: ModelConfig{
-			Default:         "gpt-5.1-codex-mini",
+			Default:         "gpt-5.4",
 			ReasoningEffort: "medium",
 			TeamThreshold:   3,
 		},

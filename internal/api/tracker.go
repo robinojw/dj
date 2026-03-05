@@ -6,8 +6,6 @@ import (
 
 // Model pricing per 1M tokens (USD).
 var modelPricing = map[string][2]float64{
-	"gpt-5.1-codex-mini": {1.50, 6.00},   // {input, output}
-	"gpt-5.1-codex":      {3.00, 12.00},
 	"o3-pro":             {20.00, 80.00},
 	"gpt-5.4":            {2.50, 10.00},
 	"gpt-5.3-codex":      {3.00, 12.00},
