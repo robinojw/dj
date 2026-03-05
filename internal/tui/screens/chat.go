@@ -1,12 +1,13 @@
 package screens
 
 import (
+	"context"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"context"
 
 	"github.com/robinojw/dj/internal/agents"
 	"github.com/robinojw/dj/internal/api"
@@ -36,18 +37,28 @@ type StreamErrorMsg struct {
 	Err error
 }
 
+// StreamDiffMsg carries a git diff result.
+type StreamDiffMsg struct {
+	FilePath  string
+	DiffText  string
+	Timestamp time.Time
+}
+
 // ChatModel is the single-agent chat screen.
 type ChatModel struct {
-	viewport  viewport.Model
-	input     components.ChatInput
-	statusBar components.StatusBar
-	messages  []chatMessage
-	streaming bool
-	buffer    strings.Builder // accumulates current assistant response
-	Mode      agents.AgentMode
-	width     int
-	height    int
-	theme     *theme.Theme
+	viewport         viewport.Model
+	input            components.ChatInput
+	statusBar        components.StatusBar
+	messages         []chatMessage
+	diffs            []CollapsibleDiff
+	focusedDiffIndex int // -1 when no diff focused
+	viewportMode     string
+	streaming        bool
+	buffer           strings.Builder // accumulates current assistant response
+	Mode             agents.AgentMode
+	width            int
+	height           int
+	theme            *theme.Theme
 }
 
 type chatMessage struct {
@@ -55,15 +66,27 @@ type chatMessage struct {
 	Content string
 }
 
+// CollapsibleDiff represents a git diff that can be expanded/collapsed.
+type CollapsibleDiff struct {
+	ID        string
+	FilePath  string
+	DiffLines []string
+	Expanded  bool
+	Timestamp time.Time
+}
+
 func NewChatModel(t *theme.Theme) ChatModel {
 	vp := viewport.New(80, 20)
 	vp.SetContent("")
 
 	return ChatModel{
-		viewport:  vp,
-		input:     components.NewChatInput(t),
-		statusBar: components.NewStatusBar(t),
-		theme:     t,
+		viewport:         vp,
+		input:            components.NewChatInput(t),
+		statusBar:        components.NewStatusBar(t),
+		theme:            t,
+		diffs:            make([]CollapsibleDiff, 0),
+		focusedDiffIndex: -1,
+		viewportMode:     "chat",
 	}
 }
 
