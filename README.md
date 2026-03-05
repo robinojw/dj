@@ -66,7 +66,7 @@ Themes support custom JSON overrides.
 ### Homebrew (Recommended)
 
 ```bash
-brew install robinojw/dj
+brew install robinojw/dj/dj
 ```
 
 ### Go Install
