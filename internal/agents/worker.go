@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/robinojw/dj/internal/api"
@@ -164,7 +165,11 @@ func (w *Worker) executeTool(toolName string, args map[string]any) error {
 			if resp.RememberFor == modes.RememberSession {
 				w.gate.AllowForSession(toolName)
 			}
-			// RememberAlways handled by persist layer
+			if resp.RememberFor == modes.RememberAlways {
+				if err := modes.PersistToolToAllowList("harness.toml", toolName); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to persist to config: %v\n", err)
+				}
+			}
 
 			return nil
 
