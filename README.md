@@ -151,10 +151,9 @@ tools = [
 ]
 
 [mcp.servers]
-  [mcp.servers.github]
-  type = "stdio"
-  command = "npx @modelcontextprotocol/server-github"
-  auto_start = true
+  # Example: Connect to external APIs via MCP
+  # Note: For filesystem and GitHub, use native Go operations and gh CLI
+  # MCP is best for remote services and specialized integrations
 
 [skills]
 paths = [
@@ -187,17 +186,11 @@ See [docs/user-guide-permissions.md](docs/user-guide-permissions.md) for details
 
 ### MCP Servers
 
-Connect external tools via Model Context Protocol:
+Connect external tools via Model Context Protocol.
 
-**Stdio servers** (local processes):
-```toml
-[mcp.servers.filesystem]
-type = "stdio"
-command = "npx @modelcontextprotocol/server-filesystem"
-auto_start = true
-```
+**Note:** For filesystem operations and GitHub access, `dj` uses native Go operations and the `gh` CLI directly—no MCP servers needed. MCP is best for remote services and specialized integrations.
 
-**HTTP servers** (remote APIs):
+**Example - HTTP server** (remote API):
 ```toml
 [mcp.servers.stripe]
 type = "http"
@@ -315,10 +308,13 @@ Add to `~/.bashrc` or `~/.zshrc` for persistence.
 
 Check server installation:
 ```bash
-npx @modelcontextprotocol/server-github --version
+# Example for Node.js-based MCP servers
+npx @modelcontextprotocol/server-example --version
 ```
 
 Set `auto_start = false` and start manually via MCP Manager (Ctrl+M).
+
+**Note:** If you're seeing slow startup times, avoid using MCP servers for capabilities that `dj` can handle natively (filesystem, GitHub).
 
 **Theme not loading**
 
