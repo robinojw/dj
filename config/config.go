@@ -8,12 +8,27 @@ import (
 )
 
 type Config struct {
-	Model  ModelConfig  `toml:"model"`
-	Theme  ThemeConfig  `toml:"theme"`
-	MCP    MCPConfig    `toml:"mcp"`
-	Skills SkillsConfig `toml:"skills"`
-	LSP    LSPConfig    `toml:"lsp"`
-	Hooks  HooksConfig  `toml:"hooks"`
+	Model     ModelConfig     `toml:"model"`
+	Theme     ThemeConfig     `toml:"theme"`
+	MCP       MCPConfig       `toml:"mcp"`
+	Skills    SkillsConfig    `toml:"skills"`
+	LSP       LSPConfig       `toml:"lsp"`
+	Hooks     HooksConfig     `toml:"hooks"`
+	Execution ExecutionConfig `toml:"execution"`
+}
+
+type ExecutionConfig struct {
+	DefaultMode string      `toml:"default_mode"`
+	Allow       AllowConfig `toml:"allow"`
+	Deny        DenyConfig  `toml:"deny"`
+}
+
+type AllowConfig struct {
+	Tools []string `toml:"tools"`
+}
+
+type DenyConfig struct {
+	Tools []string `toml:"tools"`
 }
 
 type HooksConfig struct {
@@ -70,6 +85,11 @@ func DefaultConfig() Config {
 				"./.codex/skills",
 				"~/.config/codex-harness/skills",
 			},
+		},
+		Execution: ExecutionConfig{
+			DefaultMode: "confirm",
+			Allow:       AllowConfig{Tools: []string{}},
+			Deny:        DenyConfig{Tools: []string{}},
 		},
 	}
 }
