@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/robinojw/dj/config"
+	"github.com/robinojw/dj/internal/agents"
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/checkpoint"
 	"github.com/robinojw/dj/internal/hooks"
@@ -180,6 +181,18 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case screens.StreamErrorMsg:
 		if a.debugMode {
 			a.debugOverlay.AddError(msg.Err.Error())
+		}
+
+	case agents.WorkerUpdate:
+		// Convert UpdateDiffResult to StreamDiffMsg for the UI
+		if msg.Type == agents.UpdateDiffResult && msg.DiffInfo != nil {
+			return a, func() tea.Msg {
+				return screens.StreamDiffMsg{
+					FilePath:  msg.DiffInfo.FilePath,
+					DiffText:  msg.DiffInfo.DiffText,
+					Timestamp: msg.DiffInfo.Timestamp,
+				}
+			}
 		}
 
 	case modes.PermissionRequest:
