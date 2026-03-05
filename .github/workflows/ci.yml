@@ -18,11 +18,83 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install dependencies
+        run: |
+          go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+          go install github.com/uudashr/gocognit/cmd/gocognit@latest
+
       - name: Build
         run: go build ./...
 
-      - name: Test
-        run: go test ./... -v -race
+      - name: Test with coverage
+        run: |
+          go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
+          go tool cover -func=coverage.out
+
+      - name: Check coverage threshold
+        run: |
+          echo "Checking minimum coverage thresholds..."
+
+          # Overall coverage threshold (30%)
+          TOTAL_COV=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: ${TOTAL_COV}%"
+
+          if (( $(echo "$TOTAL_COV < 30" | bc -l) )); then
+            echo "❌ Total coverage ${TOTAL_COV}% is below minimum threshold of 30%"
+            exit 1
+          fi
+          echo "✅ Coverage check passed: ${TOTAL_COV}%"
+
+      - name: Check cyclomatic complexity
+        run: |
+          echo "Checking cyclomatic complexity (max 25)..."
+          # Exclude test files and known complex patterns (Update methods, Dispatch methods)
+          HIGH_COMPLEXITY=$(gocyclo -over 25 . | grep -v "_test.go" | grep -v "Update" | grep -v "Dispatch" || true)
+
+          if [ -n "$HIGH_COMPLEXITY" ]; then
+            echo "⚠️  Found functions with cyclomatic complexity > 25:"
+            echo "$HIGH_COMPLEXITY"
+            echo ""
+            echo "Consider refactoring these functions to reduce complexity."
+            # Don't fail the build, just warn
+          else
+            echo "✅ Cyclomatic complexity check passed"
+          fi
+
+          # Report overall complexity for awareness
+          echo ""
+          echo "Top 5 most complex functions:"
+          gocyclo -top 5 . | grep -v "_test.go" || true
+
+      - name: Check cognitive complexity
+        run: |
+          echo "Checking cognitive complexity (max 40)..."
+          # Exclude test files and known complex patterns (Update methods, Dispatch, async handlers)
+          HIGH_COGNITIVE=$(gocognit -over 40 . | grep -v "_test.go" | grep -v "Update" | grep -v "Dispatch" | grep -v "wait" || true)
+
+          if [ -n "$HIGH_COGNITIVE" ]; then
+            echo "⚠️  Found functions with cognitive complexity > 40:"
+            echo "$HIGH_COGNITIVE"
+            echo ""
+            echo "Consider refactoring these functions to improve readability."
+            # Don't fail the build, just warn
+          else
+            echo "✅ Cognitive complexity check passed"
+          fi
+
+          # Report overall complexity for awareness
+          echo ""
+          echo "Top 5 most cognitively complex functions:"
+          gocognit -top 5 . | grep -v "_test.go" || true
 
       - name: Vet
         run: go vet ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+          flags: unittests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
