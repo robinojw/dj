@@ -11,6 +11,7 @@ import (
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/lsp"
 	"github.com/robinojw/dj/internal/mcp"
+	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/skills"
 	"github.com/robinojw/dj/internal/tui"
 	"github.com/robinojw/dj/internal/tui/theme"
@@ -72,6 +73,10 @@ func main() {
 		}
 	}
 	_ = lspClient // will be wired to app in future steps
+
+	// Set up memory manager
+	memMgr := memory.DefaultManager()
+	_ = memMgr // will be wired to app in future steps
 
 	app := tui.NewApp(t, client, tracker, cfg.Model.Default)
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/robinojw/dj/internal/api"
+	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/skills"
 )
 
@@ -17,6 +18,7 @@ type Worker struct {
 	Mode     AgentMode
 	client   *api.ResponsesClient
 	skills   *skills.Registry
+	memory   *memory.Manager
 	model    string
 	parentID string
 }
@@ -28,6 +30,7 @@ func NewWorker(
 	model string,
 	parentID string,
 	mode AgentMode,
+	mem *memory.Manager,
 ) *Worker {
 	return &Worker{
 		ID:       task.ID,
@@ -36,6 +39,7 @@ func NewWorker(
 		Mode:     mode,
 		client:   client,
 		skills:   skillsRegistry,
+		memory:   mem,
 		model:    model,
 		parentID: parentID,
 	}
@@ -123,6 +127,12 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 func (w *Worker) buildInstructions() string {
 	modeCfg := Modes[w.Mode]
 	base := modeCfg.SystemPrompt + "\n\n"
+
+	// Inject memory context if available
+	if w.memory != nil {
+		base += w.memory.LoadContext() + "\n\n"
+	}
+
 	base += fmt.Sprintf("Subtask: %s\n", w.Task.Description)
 
 	if len(w.Task.Files) > 0 {
