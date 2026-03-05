@@ -2,9 +2,13 @@ package tui
 
 import (
 	"context"
+	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/robinojw/dj/internal/agents"
 	"github.com/robinojw/dj/internal/api"
+	"github.com/robinojw/dj/internal/checkpoint"
+	"github.com/robinojw/dj/internal/hooks"
 	"github.com/robinojw/dj/internal/tui/screens"
 	"github.com/robinojw/dj/internal/tui/theme"
 )
@@ -33,6 +37,9 @@ type App struct {
 	tracker      *api.Tracker
 	client       *api.ResponsesClient
 	model        string
+	mode         agents.AgentMode
+	checkpoints  *checkpoint.Manager
+	hooks        *hooks.Runner
 	width        int
 	height       int
 }
@@ -55,6 +62,7 @@ func NewApp(
 		tracker:      tracker,
 		client:       client,
 		model:        model,
+		checkpoints:  checkpoint.NewManager(20),
 	}
 }
 
@@ -88,6 +96,24 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.screen != ScreenTeam {
 				return a, a.pushScreen(ScreenTeam)
 			}
+		case "tab":
+			if a.mode == agents.ModeBuild {
+				a.mode = agents.ModePlan
+			} else {
+				a.mode = agents.ModeBuild
+			}
+			a.chat.SetMode(a.mode)
+			return a, nil
+		case "ctrl+z":
+			cp := a.checkpoints.Pop()
+			if cp != nil {
+				if err := a.checkpoints.Restore(*cp); err == nil {
+					return a, func() tea.Msg {
+						return screens.StreamDeltaMsg{Delta: fmt.Sprintf("\n[Restored: %s]\n", cp.Description)}
+					}
+				}
+			}
+			return a, nil
 		case "esc":
 			if a.screen != ScreenChat {
 				return a, a.popScreen()

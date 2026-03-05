@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/internal/api"
+	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/skills"
 )
 
@@ -14,6 +15,8 @@ type Orchestrator struct {
 	RootID    string
 	Workers   map[string]*Worker
 	UpdatesCh chan WorkerUpdate
+	Mode      AgentMode
+	Memory    *memory.Manager
 	client    *api.ResponsesClient
 	skills    *skills.Registry
 	model     string
@@ -42,7 +45,7 @@ func NewOrchestrator(
 func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 	o.mu.Lock()
 	for _, task := range subtasks {
-		w := NewWorker(task, o.client, o.skills, o.model, o.RootID)
+		w := NewWorker(task, o.client, o.skills, o.model, o.RootID, o.Mode, o.Memory)
 		o.Workers[w.ID] = w
 	}
 	o.mu.Unlock()

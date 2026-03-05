@@ -6,14 +6,19 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"context"
+
+	"github.com/robinojw/dj/internal/agents"
 	"github.com/robinojw/dj/internal/api"
+	"github.com/robinojw/dj/internal/mentions"
 	"github.com/robinojw/dj/internal/tui/components"
 	"github.com/robinojw/dj/internal/tui/theme"
 )
 
 // SubmitMsg is sent when the user presses Enter to submit a message.
 type SubmitMsg struct {
-	Text string
+	Text           string
+	MentionContext string // resolved @mention content appended to prompt
 }
 
 // StreamDeltaMsg carries a text delta from the SSE stream.
@@ -39,6 +44,7 @@ type ChatModel struct {
 	messages  []chatMessage
 	streaming bool
 	buffer    strings.Builder // accumulates current assistant response
+	Mode      agents.AgentMode
 	width     int
 	height    int
 	theme     *theme.Theme
@@ -87,7 +93,19 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 				m.streaming = true
 				m.buffer.Reset()
 				m.updateViewport()
-				return m, func() tea.Msg { return SubmitMsg{Text: text} }
+
+				// Parse and resolve @mentions
+				parsed := mentions.Parse(text)
+				var mentionCtx string
+				if len(parsed) > 0 {
+					resolved := mentions.Resolve(context.Background(), parsed)
+					mentionCtx = mentions.FormatResolved(resolved)
+					text = mentions.StripMentions(text)
+				}
+
+				return m, func() tea.Msg {
+					return SubmitMsg{Text: text, MentionContext: mentionCtx}
+				}
 			}
 		}
 
@@ -170,4 +188,9 @@ func (m *ChatModel) SetCost(cost float64) {
 
 func (m *ChatModel) SetActiveMCPs(names []string) {
 	m.statusBar.ActiveMCPs = names
+}
+
+func (m *ChatModel) SetMode(mode agents.AgentMode) {
+	m.Mode = mode
+	m.statusBar.Mode = mode.String()
 }

@@ -15,6 +15,9 @@ type StatusBar struct {
 	OutputTokens   int
 	CumulativeCost float64
 	ActiveMCPs     []string
+	Mode           string // "Build", "Plan"
+	LSPServer      string // e.g. "gopls"
+	Compacting     bool
 	Width          int
 	Theme          *theme.Theme
 }
@@ -39,11 +42,29 @@ func (s StatusBar) View() string {
 		mcpBadges = " " + strings.Join(badges, " ")
 	}
 
-	content := fmt.Sprintf("CTX %s %.1f%%  OUT %s  $%.4f%s",
+	var modeBadge string
+	if s.Mode != "" {
+		modeBadge = s.Theme.BadgeStyle().Render(s.Mode) + "  "
+	}
+
+	var lspBadge string
+	if s.LSPServer != "" {
+		lspBadge = " " + s.Theme.BadgeStyle().Render("LSP: "+s.LSPServer)
+	}
+
+	var compactBadge string
+	if s.Compacting {
+		compactBadge = " " + s.Theme.AccentStyle().Render("Compacting context...")
+	}
+
+	content := fmt.Sprintf("%sCTX %s %.1f%%  OUT %s  $%.4f%s%s%s",
+		modeBadge,
 		ctxBar, ctxPct,
 		humanize.Comma(int64(s.OutputTokens)),
 		s.CumulativeCost,
 		mcpBadges,
+		lspBadge,
+		compactBadge,
 	)
 
 	return s.Theme.StatusStyle().

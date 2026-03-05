@@ -9,7 +9,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/config"
 	"github.com/robinojw/dj/internal/api"
+	"github.com/robinojw/dj/internal/hooks"
+	"github.com/robinojw/dj/internal/lsp"
 	"github.com/robinojw/dj/internal/mcp"
+	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/skills"
 	"github.com/robinojw/dj/internal/tui"
 	"github.com/robinojw/dj/internal/tui/theme"
@@ -55,6 +58,38 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Warning: MCP startup error: %v\n", err)
 	}
 	defer mcpRegistry.StopAll()
+
+	// Auto-detect and start LSP server
+	var lspClient *lsp.Client
+	if cfg.LSP.Enabled || cfg.LSP.Language == "" {
+		cwd, _ := os.Getwd()
+		if detected := lsp.Detect(cwd); detected != nil {
+			lspClient = lsp.NewClient(detected.Config, detected.RootPath)
+			if err := lspClient.Start(ctx); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: LSP server failed to start: %v\n", err)
+				lspClient = nil
+			} else {
+				defer lspClient.Close()
+			}
+		}
+	}
+	_ = lspClient // will be wired to app in future steps
+
+	// Set up memory manager
+	memMgr := memory.DefaultManager()
+	_ = memMgr // will be wired to app in future steps
+
+	// Set up event hooks
+	hookRunner := hooks.NewRunner(hooks.Config{
+		Hooks: map[string]string{
+			string(hooks.HookPreToolCall):  cfg.Hooks.PreToolCall,
+			string(hooks.HookPostToolCall): cfg.Hooks.PostToolCall,
+			string(hooks.HookOnError):      cfg.Hooks.OnError,
+			string(hooks.HookSessionEnd):   cfg.Hooks.OnSessionEnd,
+		},
+	})
+	defer hookRunner.Fire(hooks.HookSessionEnd, map[string]string{"summary": "session ended"})
+	_ = hookRunner // will be wired to app in future steps
 
 	app := tui.NewApp(t, client, tracker, cfg.Model.Default)
 
