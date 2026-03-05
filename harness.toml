@@ -11,15 +11,18 @@ name = "tokyonight"           # builtin name OR path to .json file
 
 [mcp.servers]
 
-  [mcp.servers.github]
-  type    = "stdio"
-  command = "npx @modelcontextprotocol/server-github"
-  auto_start = true
-
-  [mcp.servers.filesystem]
-  type    = "stdio"
-  command = "npx @modelcontextprotocol/server-filesystem"
-  auto_start = true
+  # Removed - use native Go filesystem operations and gh CLI instead
+  # These Node.js MCP servers added 15+ seconds to startup time
+  #
+  # [mcp.servers.github]
+  # type    = "stdio"
+  # command = "npx @modelcontextprotocol/server-github"
+  # auto_start = true
+  #
+  # [mcp.servers.filesystem]
+  # type    = "stdio"
+  # command = "npx @modelcontextprotocol/server-filesystem"
+  # auto_start = true
 
   # [mcp.servers.stripe]
   # type    = "http"
