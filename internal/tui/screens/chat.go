@@ -109,6 +109,38 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 		m.updateViewport()
 
 	case tea.KeyMsg:
+		// Diff navigation mode
+		if m.viewportMode == "diff_nav" && len(m.diffs) > 0 {
+			switch msg.String() {
+			case "tab":
+				m.focusedDiffIndex = (m.focusedDiffIndex + 1) % len(m.diffs)
+				m.updateViewport()
+				return m, nil
+
+			case "shift+tab":
+				m.focusedDiffIndex--
+				if m.focusedDiffIndex < 0 {
+					m.focusedDiffIndex = len(m.diffs) - 1
+				}
+				m.updateViewport()
+				return m, nil
+
+			case "enter", " ":
+				if m.focusedDiffIndex >= 0 && m.focusedDiffIndex < len(m.diffs) {
+					m.diffs[m.focusedDiffIndex].Expanded = !m.diffs[m.focusedDiffIndex].Expanded
+					m.updateViewport()
+				}
+				return m, nil
+
+			case "esc":
+				m.viewportMode = "chat"
+				m.focusedDiffIndex = -1
+				m.updateViewport()
+				return m, nil
+			}
+		}
+
+		// Existing message submission logic
 		if msg.String() == "enter" && !m.streaming {
 			text := strings.TrimSpace(m.input.Value())
 			if text != "" {
