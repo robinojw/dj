@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/robinojw/dj/internal/api"
@@ -222,4 +223,20 @@ func isEditTool(toolName string) bool {
 	return toolName == "edit_file" ||
 		toolName == "write_file" ||
 		toolName == "delete_file"
+}
+
+// generateGitDiff runs git diff for the given file and returns the output.
+// Returns error if not in a git repo or git command fails.
+func generateGitDiff(filePath string) (DiffInfo, error) {
+	cmd := exec.Command("git", "diff", "HEAD", filePath)
+	output, err := cmd.Output()
+	if err != nil {
+		return DiffInfo{}, fmt.Errorf("git diff failed: %w", err)
+	}
+
+	return DiffInfo{
+		FilePath:  filePath,
+		DiffText:  string(output),
+		Timestamp: time.Now(),
+	}, nil
 }
