@@ -194,3 +194,7 @@ func (m *ChatModel) SetMode(mode agents.AgentMode) {
 	m.Mode = mode
 	m.statusBar.Mode = mode
 }
+
+func (m *ChatModel) SetModel(model string) {
+	m.statusBar.Model = model
+}

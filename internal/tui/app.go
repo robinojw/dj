@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/robinojw/dj/config"
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/checkpoint"
@@ -47,6 +48,8 @@ type App struct {
 	permRequestCh   chan modes.PermissionRequest
 	checkpoints     *checkpoint.Manager
 	hooks           *hooks.Runner
+	debugOverlay    components.DebugOverlay
+	debugMode       bool
 	width           int
 	height          int
 }
@@ -65,7 +68,7 @@ func NewApp(
 		cfg.Execution.Deny.Tools,
 	)
 
-	return App{
+	app := App{
 		screen:          ScreenChat,
 		chat:            screens.NewChatModel(t),
 		team:            screens.NewTeamModel(t),
@@ -82,7 +85,10 @@ func NewApp(
 		turboModal:      components.NewTurboModal(t),
 		permRequestCh:   make(chan modes.PermissionRequest, 10),
 		checkpoints:     checkpoint.NewManager(20),
+		debugOverlay:    components.NewDebugOverlay(t),
 	}
+	app.chat.SetModel(model)
+	return app
 }
 
 func (a App) Init() tea.Cmd {
@@ -94,10 +100,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+		a.debugOverlay.SetSize(msg.Width, msg.Height)
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+q":
+		case "ctrl+c", "ctrl+q":
 			return a, tea.Quit
 		case "ctrl+e":
 			if a.screen != ScreenEnhance {
@@ -115,6 +122,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.screen != ScreenTeam {
 				return a, a.pushScreen(ScreenTeam)
 			}
+		case "ctrl+/":
+			a.cycleModel()
+			return a, nil
+		case "ctrl+d":
+			a.debugMode = !a.debugMode
+			a.debugOverlay.Toggle()
+			return a, nil
 		case "tab":
 			// Cycle: Confirm → Plan → Turbo → Confirm
 			newMode := (a.mode + 1) % 3
@@ -163,6 +177,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case screens.TeamSpawnedMsg:
 		return a, a.pushScreen(ScreenTeam)
 
+	case screens.StreamErrorMsg:
+		if a.debugMode {
+			a.debugOverlay.AddError(msg.Err.Error())
+		}
+
 	case modes.PermissionRequest:
 		var cmd tea.Cmd
 		a.permissionModal, cmd = a.permissionModal.Update(msg)
@@ -188,18 +207,34 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (a App) View() string {
+	var base string
 	switch a.screen {
 	case ScreenTeam:
-		return a.team.View()
+		base = a.team.View()
 	case ScreenEnhance:
-		return a.enhance.View()
+		base = a.enhance.View()
 	case ScreenMCP:
-		return a.mcpManager.View()
+		base = a.mcpManager.View()
 	case ScreenSkills:
-		return a.skillBrowser.View()
+		base = a.skillBrowser.View()
 	default:
-		return a.chat.View()
+		base = a.chat.View()
 	}
+
+	if a.debugMode {
+		overlay := a.debugOverlay.View()
+		if overlay != "" {
+			// Place the debug panel in the top-right, overlaid on the base
+			return lipgloss.Place(a.width, a.height,
+				lipgloss.Right, lipgloss.Top,
+				overlay,
+				lipgloss.WithWhitespaceChars(" "),
+				lipgloss.WithWhitespaceForeground(lipgloss.NoColor{}),
+			) + "\n" + base
+		}
+	}
+
+	return base
 }
 
 func (a *App) pushScreen(s Screen) tea.Cmd {
@@ -216,6 +251,25 @@ func (a *App) popScreen() tea.Cmd {
 	a.screen = a.screenStack[len(a.screenStack)-1]
 	a.screenStack = a.screenStack[:len(a.screenStack)-1]
 	return nil
+}
+
+func (a *App) cycleModel() {
+	models := api.CycleModels
+	current := -1
+	for i, m := range models {
+		if m == a.model {
+			current = i
+			break
+		}
+	}
+	next := models[(current+1)%len(models)]
+	a.model = next
+	a.tracker.SetModel(next)
+	a.chat.SetModel(next)
+
+	if a.debugMode {
+		a.debugOverlay.AddInfo("Model switched to " + next)
+	}
 }
 
 func (a *App) handleSubmit(text string) tea.Cmd {
