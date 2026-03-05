@@ -9,7 +9,7 @@ DJ orchestrates AI agents in your terminal — plan, build, refactor, and debug 
 ### Homebrew
 
 ```bash
-brew install robinojw/dj/dj
+brew install robinojw/dj
 ```
 
 ### From source
