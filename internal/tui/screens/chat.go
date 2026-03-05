@@ -43,7 +43,7 @@ type ChatModel struct {
 	statusBar components.StatusBar
 	messages  []chatMessage
 	streaming bool
-	buffer    strings.Builder // accumulates current assistant response
+	buffer    *strings.Builder // accumulates current assistant response
 	Mode      agents.AgentMode
 	width     int
 	height    int
@@ -63,6 +63,7 @@ func NewChatModel(t *theme.Theme) ChatModel {
 		viewport:  vp,
 		input:     components.NewChatInput(t),
 		statusBar: components.NewStatusBar(t),
+		buffer:    &strings.Builder{},
 		theme:     t,
 	}
 }
