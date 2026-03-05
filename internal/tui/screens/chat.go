@@ -235,6 +235,13 @@ func (m *ChatModel) updateViewport() {
 		lines = append(lines, "")
 	}
 
+	// Render diffs
+	for i, diff := range m.diffs {
+		diffLines := m.renderDiff(diff, i == m.focusedDiffIndex)
+		lines = append(lines, diffLines...)
+		lines = append(lines, "")
+	}
+
 	if m.streaming && m.buffer.Len() == 0 {
 		lines = append(lines, m.theme.MutedStyle().Render("Thinking..."))
 	}
