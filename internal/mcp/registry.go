@@ -53,8 +53,11 @@ func (r *Registry) Connect(ctx context.Context, name string) error {
 
 	tools, err := client.ListTools(ctx)
 	if err != nil {
-		client.Close()
-		return fmt.Errorf("list tools for %s: %w", name, err)
+		// ListTools failure is non-fatal — server connected but may not
+		// support tools/list yet (e.g. older protocol versions).
+		// Keep the client connected with an empty tool list.
+		fmt.Printf("Warning: MCP server %s connected but tools/list failed: %v\n", name, err)
+		tools = nil
 	}
 
 	r.clients[name] = client

@@ -9,7 +9,13 @@ var modelPricing = map[string][2]float64{
 	"gpt-5.1-codex-mini": {1.50, 6.00},   // {input, output}
 	"gpt-5.1-codex":      {3.00, 12.00},
 	"o3-pro":             {20.00, 80.00},
+	"gpt-5.4":            {2.50, 10.00},
+	"gpt-5.3-codex":      {3.00, 12.00},
+	"o4-mini":             {1.10, 4.40},
 }
+
+// CycleModels defines the models available for quick-switching via Ctrl+/.
+var CycleModels = []string{"gpt-5.4", "gpt-5.3-codex", "o4-mini"}
 
 // Tracker accumulates token counts and cost across a session.
 type Tracker struct {
@@ -55,6 +61,12 @@ func (t *Tracker) Cost() float64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.cost
+}
+
+func (t *Tracker) Model() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.model
 }
 
 func (t *Tracker) SetModel(model string) {
