@@ -1,0 +1,80 @@
+version: 2
+
+project_name: dj
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: dj
+    main: ./cmd/harness/main.go
+    binary: dj
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.buildDate={{.Date}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: dj
+    name_template: "dj_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - themes/**
+      - skills/**
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - Merge pull request
+  groups:
+    - title: Features
+      regexp: "^feat"
+    - title: Bug Fixes
+      regexp: "^fix"
+    - title: Performance
+      regexp: "^perf"
+
+brews:
+  - name: dj
+    repository:
+      owner: robinojw
+      name: homebrew-dj
+      branch: main
+      token: "{{ .Env.GH_PAT }}"
+    directory: Formula
+    homepage: "https://github.com/robinojw/dj"
+    description: "DJ — an AI coding harness TUI for OpenAI Codex"
+    license: "MIT"
+    dependencies:
+      - name: git
+    install: |
+      bin.install "dj"
+    test: |
+      system "#{bin}/dj", "--version"
