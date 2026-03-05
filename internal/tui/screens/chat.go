@@ -11,6 +11,7 @@ import (
 	"github.com/robinojw/dj/internal/agents"
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/mentions"
+	"github.com/robinojw/dj/internal/modes"
 	"github.com/robinojw/dj/internal/tui/components"
 	"github.com/robinojw/dj/internal/tui/theme"
 )
@@ -192,5 +193,5 @@ func (m *ChatModel) SetActiveMCPs(names []string) {
 
 func (m *ChatModel) SetMode(mode agents.AgentMode) {
 	m.Mode = mode
-	m.statusBar.Mode = mode.String()
+	m.statusBar.Mode = modes.ExecutionMode(mode)
 }
