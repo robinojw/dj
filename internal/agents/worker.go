@@ -216,3 +216,10 @@ func (w *Worker) buildInstructions() string {
 
 	return base
 }
+
+// isEditTool returns true if the tool modifies files.
+func isEditTool(toolName string) bool {
+	return toolName == "edit_file" ||
+		toolName == "write_file" ||
+		toolName == "delete_file"
+}
