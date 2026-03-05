@@ -32,3 +32,27 @@ paths = [
   "./.codex/skills",
   "~/.config/codex-harness/skills",
 ]
+
+[execution]
+default_mode = "confirm"  # confirm | plan | turbo
+
+[execution.allow]
+# Tools always auto-approved (overrides mode restrictions)
+tools = [
+    "read_file",
+    "list_dir",
+    "search_code",
+    "run_tests",
+    "bash(git status*)",
+    "bash(git diff*)",
+    "bash(go build*)",
+]
+
+[execution.deny]
+# Blocked in all modes (security floor)
+tools = [
+    "bash(rm -rf*)",
+    "bash(curl*)",
+    "read_file(.env*)",
+    "write_file(.env*)",
+]
