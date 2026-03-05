@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/robinojw/dj/internal/agents"
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/tui/components"
 	"github.com/robinojw/dj/internal/tui/theme"
@@ -39,6 +40,7 @@ type ChatModel struct {
 	messages  []chatMessage
 	streaming bool
 	buffer    strings.Builder // accumulates current assistant response
+	Mode      agents.AgentMode
 	width     int
 	height    int
 	theme     *theme.Theme
@@ -170,4 +172,9 @@ func (m *ChatModel) SetCost(cost float64) {
 
 func (m *ChatModel) SetActiveMCPs(names []string) {
 	m.statusBar.ActiveMCPs = names
+}
+
+func (m *ChatModel) SetMode(mode agents.AgentMode) {
+	m.Mode = mode
+	m.statusBar.Mode = mode.String()
 }

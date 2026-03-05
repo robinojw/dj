@@ -14,6 +14,7 @@ type Worker struct {
 	Task     Subtask
 	Status   string // "pending", "running", "completed", "error"
 	Output   string
+	Mode     AgentMode
 	client   *api.ResponsesClient
 	skills   *skills.Registry
 	model    string
@@ -26,11 +27,13 @@ func NewWorker(
 	skillsRegistry *skills.Registry,
 	model string,
 	parentID string,
+	mode AgentMode,
 ) *Worker {
 	return &Worker{
 		ID:       task.ID,
 		Task:     task,
 		Status:   "pending",
+		Mode:     mode,
 		client:   client,
 		skills:   skillsRegistry,
 		model:    model,
@@ -50,7 +53,7 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 		Input:        api.MakeStringInput(w.Task.Description),
 		Instructions: instructions,
 		Reasoning: &api.Reasoning{
-			Effort: "medium",
+			Effort: Modes[w.Mode].ReasoningEffort,
 		},
 		Stream: true,
 	}
@@ -118,7 +121,9 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 }
 
 func (w *Worker) buildInstructions() string {
-	base := fmt.Sprintf("You are a focused coding agent working on a specific subtask.\n\nSubtask: %s\n", w.Task.Description)
+	modeCfg := Modes[w.Mode]
+	base := modeCfg.SystemPrompt + "\n\n"
+	base += fmt.Sprintf("Subtask: %s\n", w.Task.Description)
 
 	if len(w.Task.Files) > 0 {
 		base += "\nScoped files:\n"

@@ -14,6 +14,7 @@ type Orchestrator struct {
 	RootID    string
 	Workers   map[string]*Worker
 	UpdatesCh chan WorkerUpdate
+	Mode      AgentMode
 	client    *api.ResponsesClient
 	skills    *skills.Registry
 	model     string
@@ -42,7 +43,7 @@ func NewOrchestrator(
 func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 	o.mu.Lock()
 	for _, task := range subtasks {
-		w := NewWorker(task, o.client, o.skills, o.model, o.RootID)
+		w := NewWorker(task, o.client, o.skills, o.model, o.RootID, o.Mode)
 		o.Workers[w.ID] = w
 	}
 	o.mu.Unlock()

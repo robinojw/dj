@@ -4,6 +4,7 @@ import (
 	"context"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/robinojw/dj/internal/agents"
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/tui/screens"
 	"github.com/robinojw/dj/internal/tui/theme"
@@ -33,6 +34,7 @@ type App struct {
 	tracker      *api.Tracker
 	client       *api.ResponsesClient
 	model        string
+	mode         agents.AgentMode
 	width        int
 	height       int
 }
@@ -88,6 +90,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.screen != ScreenTeam {
 				return a, a.pushScreen(ScreenTeam)
 			}
+		case "tab":
+			if a.mode == agents.ModeBuild {
+				a.mode = agents.ModePlan
+			} else {
+				a.mode = agents.ModeBuild
+			}
+			a.chat.SetMode(a.mode)
+			return a, nil
 		case "esc":
 			if a.screen != ScreenChat {
 				return a, a.popScreen()
