@@ -1,0 +1,173 @@
+package screens
+
+import (
+	"strings"
+
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/robinojw/dj/internal/api"
+	"github.com/robinojw/dj/internal/tui/components"
+	"github.com/robinojw/dj/internal/tui/theme"
+)
+
+// SubmitMsg is sent when the user presses Enter to submit a message.
+type SubmitMsg struct {
+	Text string
+}
+
+// StreamDeltaMsg carries a text delta from the SSE stream.
+type StreamDeltaMsg struct {
+	Delta string
+}
+
+// StreamDoneMsg signals the stream has completed.
+type StreamDoneMsg struct {
+	Usage api.Usage
+}
+
+// StreamErrorMsg signals a streaming error.
+type StreamErrorMsg struct {
+	Err error
+}
+
+// ChatModel is the single-agent chat screen.
+type ChatModel struct {
+	viewport  viewport.Model
+	input     components.ChatInput
+	statusBar components.StatusBar
+	messages  []chatMessage
+	streaming bool
+	buffer    strings.Builder // accumulates current assistant response
+	width     int
+	height    int
+	theme     *theme.Theme
+}
+
+type chatMessage struct {
+	Role    string // "user" or "assistant"
+	Content string
+}
+
+func NewChatModel(t *theme.Theme) ChatModel {
+	vp := viewport.New(80, 20)
+	vp.SetContent("")
+
+	return ChatModel{
+		viewport:  vp,
+		input:     components.NewChatInput(t),
+		statusBar: components.NewStatusBar(t),
+		theme:     t,
+	}
+}
+
+func (m ChatModel) Init() tea.Cmd {
+	return m.input.Focus()
+}
+
+func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
+	var cmds []tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.viewport.Width = msg.Width
+		m.viewport.Height = msg.Height - 4 // room for input + status
+		m.input.SetWidth(msg.Width)
+		m.statusBar.Width = msg.Width
+		m.updateViewport()
+
+	case tea.KeyMsg:
+		if msg.String() == "enter" && !m.streaming {
+			text := strings.TrimSpace(m.input.Value())
+			if text != "" {
+				m.messages = append(m.messages, chatMessage{Role: "user", Content: text})
+				m.input.Reset()
+				m.streaming = true
+				m.buffer.Reset()
+				m.updateViewport()
+				return m, func() tea.Msg { return SubmitMsg{Text: text} }
+			}
+		}
+
+	case StreamDeltaMsg:
+		m.buffer.WriteString(msg.Delta)
+		m.updateViewport()
+
+	case StreamDoneMsg:
+		m.messages = append(m.messages, chatMessage{
+			Role:    "assistant",
+			Content: m.buffer.String(),
+		})
+		m.buffer.Reset()
+		m.streaming = false
+		m.statusBar.InputTokens += msg.Usage.InputTokens
+		m.statusBar.OutputTokens += msg.Usage.OutputTokens
+		m.updateViewport()
+
+	case StreamErrorMsg:
+		m.messages = append(m.messages, chatMessage{
+			Role:    "assistant",
+			Content: "Error: " + msg.Err.Error(),
+		})
+		m.buffer.Reset()
+		m.streaming = false
+		m.updateViewport()
+	}
+
+	// Update sub-components
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	cmds = append(cmds, cmd)
+
+	m.viewport, cmd = m.viewport.Update(msg)
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
+}
+
+func (m *ChatModel) updateViewport() {
+	var lines []string
+	for _, msg := range m.messages {
+		switch msg.Role {
+		case "user":
+			label := m.theme.AccentStyle().Render("You: ")
+			lines = append(lines, label+msg.Content)
+		case "assistant":
+			label := m.theme.PrimaryStyle().Render("DJ: ")
+			lines = append(lines, label+msg.Content)
+		}
+		lines = append(lines, "")
+	}
+
+	// Show streaming buffer
+	if m.streaming && m.buffer.Len() > 0 {
+		label := m.theme.PrimaryStyle().Render("DJ: ")
+		lines = append(lines, label+m.buffer.String())
+		lines = append(lines, "")
+	}
+
+	if m.streaming && m.buffer.Len() == 0 {
+		lines = append(lines, m.theme.MutedStyle().Render("Thinking..."))
+	}
+
+	m.viewport.SetContent(strings.Join(lines, "\n"))
+	m.viewport.GotoBottom()
+}
+
+func (m ChatModel) View() string {
+	return lipgloss.JoinVertical(lipgloss.Left,
+		m.viewport.View(),
+		m.input.View(),
+		m.statusBar.View(),
+	)
+}
+
+func (m *ChatModel) SetCost(cost float64) {
+	m.statusBar.CumulativeCost = cost
+}
+
+func (m *ChatModel) SetActiveMCPs(names []string) {
+	m.statusBar.ActiveMCPs = names
+}

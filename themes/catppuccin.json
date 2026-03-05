@@ -1,0 +1,20 @@
+{
+  "name": "catppuccin",
+  "colors": {
+    "background": "#1e1e2e",
+    "foreground": "#cdd6f4",
+    "primary": "#89b4fa",
+    "secondary": "#cba6f7",
+    "accent": "#94e2d5",
+    "error": "#f38ba8",
+    "warning": "#fab387",
+    "success": "#a6e3a1",
+    "muted": "#6c7086",
+    "border": "#45475a",
+    "panel_bg": "#181825",
+    "status_bg": "#11111b",
+    "selection_bg": "#313244",
+    "badge_bg": "#89b4fa",
+    "badge_fg": "#1e1e2e"
+  }
+}

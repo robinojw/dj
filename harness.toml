@@ -1,0 +1,34 @@
+# DJ - Codex Harness TUI
+# Project-level configuration
+
+[model]
+default = "gpt-5.1-codex-mini"
+reasoning_effort = "medium"
+team_threshold = 3            # subtasks before spawning team view
+
+[theme]
+name = "tokyonight"           # builtin name OR path to .json file
+
+[mcp.servers]
+
+  [mcp.servers.github]
+  type    = "stdio"
+  command = "npx @modelcontextprotocol/server-github"
+  auto_start = true
+
+  [mcp.servers.filesystem]
+  type    = "stdio"
+  command = "npx @modelcontextprotocol/server-filesystem"
+  auto_start = true
+
+  # [mcp.servers.stripe]
+  # type    = "http"
+  # url     = "https://mcp.stripe.com"
+  # headers = { Authorization = "Bearer ${STRIPE_MCP_KEY}" }
+  # auto_start = false
+
+[skills]
+paths = [
+  "./.codex/skills",
+  "~/.config/codex-harness/skills",
+]
