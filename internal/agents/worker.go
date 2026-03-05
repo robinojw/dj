@@ -3,24 +3,28 @@ package agents
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/memory"
+	"github.com/robinojw/dj/internal/modes"
 	"github.com/robinojw/dj/internal/skills"
 )
 
 // Worker is a sub-agent goroutine that processes a single subtask.
 type Worker struct {
-	ID       string
-	Task     Subtask
-	Status   string // "pending", "running", "completed", "error"
-	Output   string
-	Mode     AgentMode
-	client   *api.ResponsesClient
-	skills   *skills.Registry
-	memory   *memory.Manager
-	model    string
-	parentID string
+	ID        string
+	Task      Subtask
+	Status    string // "pending", "running", "completed", "error"
+	Output    string
+	Mode      AgentMode
+	client    *api.ResponsesClient
+	skills    *skills.Registry
+	memory    *memory.Manager
+	model     string
+	parentID  string
+	gate      *modes.Gate
+	permReqCh chan<- modes.PermissionRequest
 }
 
 func NewWorker(
@@ -31,17 +35,21 @@ func NewWorker(
 	parentID string,
 	mode AgentMode,
 	mem *memory.Manager,
+	gate *modes.Gate,
+	permReqCh chan<- modes.PermissionRequest,
 ) *Worker {
 	return &Worker{
-		ID:       task.ID,
-		Task:     task,
-		Status:   "pending",
-		Mode:     mode,
-		client:   client,
-		skills:   skillsRegistry,
-		memory:   mem,
-		model:    model,
-		parentID: parentID,
+		ID:        task.ID,
+		Task:      task,
+		Status:    "pending",
+		Mode:      mode,
+		client:    client,
+		skills:    skillsRegistry,
+		memory:    mem,
+		model:     model,
+		parentID:  parentID,
+		gate:      gate,
+		permReqCh: permReqCh,
 	}
 }
 
@@ -122,6 +130,57 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 	}
 
 	w.Status = "completed"
+}
+
+// executeTool runs a tool call through the permission gate.
+func (w *Worker) executeTool(toolName string, args map[string]any) error {
+	decision := w.gate.Evaluate(toolName, args)
+
+	switch decision {
+	case modes.GateDeny:
+		return fmt.Errorf("tool %q blocked by deny list or mode", toolName)
+
+	case modes.GateAllow:
+		return nil
+
+	case modes.GateAskUser:
+		respCh := make(chan modes.PermissionResp, 1)
+		req := modes.PermissionRequest{
+			ID:       fmt.Sprintf("%s-%s", w.ID, toolName),
+			WorkerID: w.ID,
+			Tool:     toolName,
+			Args:     args,
+			RespCh:   respCh,
+		}
+
+		w.permReqCh <- req
+
+		select {
+		case resp := <-respCh:
+			if !resp.Allowed {
+				return fmt.Errorf("user denied tool: %s", toolName)
+			}
+
+			if resp.RememberFor == modes.RememberSession {
+				w.gate.AllowForSession(toolName)
+			}
+			// RememberAlways handled by persist layer
+
+			return nil
+
+		case <-time.After(5 * time.Minute):
+			return fmt.Errorf("permission request timed out")
+		}
+
+	default:
+		return fmt.Errorf("unknown gate decision: %v", decision)
+	}
+}
+
+// filterToolsForMode returns tools available in the worker's current mode.
+func (w *Worker) filterToolsForMode(allTools []string) []string {
+	modeCfg := Modes[w.Mode]
+	return FilterTools(allTools, modeCfg)
 }
 
 func (w *Worker) buildInstructions() string {
