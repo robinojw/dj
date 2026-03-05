@@ -26,5 +26,8 @@ Thumbs.db
 .env
 .env.local
 
+# Plans
+docs/plans/
+
 # Worktrees
 .worktrees/
