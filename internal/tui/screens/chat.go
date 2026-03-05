@@ -55,7 +55,7 @@ type ChatModel struct {
 	focusedDiffIndex int // -1 when no diff focused
 	viewportMode     string
 	streaming        bool
-	buffer           strings.Builder // accumulates current assistant response
+	buffer           *strings.Builder // accumulates current assistant response (pointer to avoid copy panic)
 	Mode             agents.AgentMode
 	width            int
 	height           int
@@ -84,6 +84,7 @@ func NewChatModel(t *theme.Theme) ChatModel {
 		viewport:         vp,
 		input:            components.NewChatInput(t),
 		statusBar:        components.NewStatusBar(t),
+		buffer:           &strings.Builder{},
 		theme:            t,
 		diffs:            make([]CollapsibleDiff, 0),
 		focusedDiffIndex: -1,
