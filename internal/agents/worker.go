@@ -2,8 +2,10 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/robinojw/dj/internal/api"
@@ -14,18 +16,20 @@ import (
 
 // Worker is a sub-agent goroutine that processes a single subtask.
 type Worker struct {
-	ID        string
-	Task      Subtask
-	Status    string // "pending", "running", "completed", "error"
-	Output    string
-	Mode      AgentMode
-	client    *api.ResponsesClient
-	skills    *skills.Registry
-	memory    *memory.Manager
-	model     string
-	parentID  string
-	gate      *modes.Gate
-	permReqCh chan<- modes.PermissionRequest
+	ID           string
+	Task         Subtask
+	Status       string // "pending", "running", "completed", "error"
+	Output       string
+	Mode         AgentMode
+	client       *api.ResponsesClient
+	skills       *skills.Registry
+	memory       *memory.Manager
+	model        string
+	parentID     string
+	gate         *modes.Gate
+	permReqCh    chan<- modes.PermissionRequest
+	lastToolName string
+	lastToolArgs map[string]any
 }
 
 func NewWorker(
@@ -97,10 +101,32 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 
 		case "response.output_item.added":
 			if chunk.Item != nil && chunk.Item.Type == "function_call" {
+				// Track tool name and args
+				w.lastToolName = chunk.Item.Name
+				if chunk.Item.Arguments != "" {
+					_ = json.Unmarshal([]byte(chunk.Item.Arguments), &w.lastToolArgs)
+				}
+
 				updates <- WorkerUpdate{
 					WorkerID: w.ID,
 					Type:     UpdateToolCall,
 					Content:  fmt.Sprintf("Calling %s", chunk.Item.Name),
+				}
+			}
+
+		case "response.function_call_result":
+			// Generate diff if this was an edit operation
+			if isEditTool(w.lastToolName) {
+				if filePath, ok := extractFilePath(w.lastToolArgs); ok {
+					if diff, err := generateGitDiff(filePath); err == nil {
+						updates <- WorkerUpdate{
+							WorkerID: w.ID,
+							Type:     UpdateDiffResult,
+							Content:  diff.DiffText,
+							DiffInfo: &diff,
+						}
+					}
+					// Silently ignore errors (not in git repo, etc.)
 				}
 			}
 
@@ -215,4 +241,46 @@ func (w *Worker) buildInstructions() string {
 	}
 
 	return base
+}
+
+// isEditTool returns true if the tool modifies files.
+func isEditTool(toolName string) bool {
+	return toolName == "edit_file" ||
+		toolName == "write_file" ||
+		toolName == "delete_file"
+}
+
+// generateGitDiff runs git diff for the given file and returns the output.
+// Returns error if not in a git repo or git command fails.
+func generateGitDiff(filePath string) (DiffInfo, error) {
+	cmd := exec.Command("git", "diff", "HEAD", filePath)
+	output, err := cmd.Output()
+	if err != nil {
+		return DiffInfo{}, fmt.Errorf("git diff failed: %w", err)
+	}
+
+	return DiffInfo{
+		FilePath:  filePath,
+		DiffText:  string(output),
+		Timestamp: time.Now(),
+	}, nil
+}
+
+// extractFilePath extracts the file_path argument from tool call args.
+// Returns the path and true if found, empty string and false otherwise.
+func extractFilePath(args map[string]any) (string, bool) {
+	if args == nil {
+		return "", false
+	}
+
+	// Try common parameter names
+	for _, key := range []string{"file_path", "path", "filepath"} {
+		if val, ok := args[key]; ok {
+			if str, ok := val.(string); ok && str != "" {
+				return str, true
+			}
+		}
+	}
+
+	return "", false
 }

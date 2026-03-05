@@ -1,12 +1,14 @@
 package screens
 
 import (
+	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"context"
 
 	"github.com/robinojw/dj/internal/agents"
 	"github.com/robinojw/dj/internal/api"
@@ -36,18 +38,28 @@ type StreamErrorMsg struct {
 	Err error
 }
 
+// StreamDiffMsg carries a git diff result.
+type StreamDiffMsg struct {
+	FilePath  string
+	DiffText  string
+	Timestamp time.Time
+}
+
 // ChatModel is the single-agent chat screen.
 type ChatModel struct {
-	viewport  viewport.Model
-	input     components.ChatInput
-	statusBar components.StatusBar
-	messages  []chatMessage
-	streaming bool
-	buffer    *strings.Builder // accumulates current assistant response
-	Mode      agents.AgentMode
-	width     int
-	height    int
-	theme     *theme.Theme
+	viewport         viewport.Model
+	input            components.ChatInput
+	statusBar        components.StatusBar
+	messages         []chatMessage
+	diffs            []CollapsibleDiff
+	focusedDiffIndex int // -1 when no diff focused
+	viewportMode     string
+	streaming        bool
+	buffer           *strings.Builder // accumulates current assistant response (pointer to avoid copy panic)
+	Mode             agents.AgentMode
+	width            int
+	height           int
+	theme            *theme.Theme
 }
 
 type chatMessage struct {
@@ -55,16 +67,28 @@ type chatMessage struct {
 	Content string
 }
 
+// CollapsibleDiff represents a git diff that can be expanded/collapsed.
+type CollapsibleDiff struct {
+	ID        string
+	FilePath  string
+	DiffLines []string
+	Expanded  bool
+	Timestamp time.Time
+}
+
 func NewChatModel(t *theme.Theme) ChatModel {
 	vp := viewport.New(80, 20)
 	vp.SetContent("")
 
 	return ChatModel{
-		viewport:  vp,
-		input:     components.NewChatInput(t),
-		statusBar: components.NewStatusBar(t),
-		buffer:    &strings.Builder{},
-		theme:     t,
+		viewport:         vp,
+		input:            components.NewChatInput(t),
+		statusBar:        components.NewStatusBar(t),
+		buffer:           &strings.Builder{},
+		theme:            t,
+		diffs:            make([]CollapsibleDiff, 0),
+		focusedDiffIndex: -1,
+		viewportMode:     "chat",
 	}
 }
 
@@ -86,6 +110,38 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 		m.updateViewport()
 
 	case tea.KeyMsg:
+		// Diff navigation mode
+		if m.viewportMode == "diff_nav" && len(m.diffs) > 0 {
+			switch msg.String() {
+			case "tab":
+				m.focusedDiffIndex = (m.focusedDiffIndex + 1) % len(m.diffs)
+				m.updateViewport()
+				return m, nil
+
+			case "shift+tab":
+				m.focusedDiffIndex--
+				if m.focusedDiffIndex < 0 {
+					m.focusedDiffIndex = len(m.diffs) - 1
+				}
+				m.updateViewport()
+				return m, nil
+
+			case "enter", " ":
+				if m.focusedDiffIndex >= 0 && m.focusedDiffIndex < len(m.diffs) {
+					m.diffs[m.focusedDiffIndex].Expanded = !m.diffs[m.focusedDiffIndex].Expanded
+					m.updateViewport()
+				}
+				return m, nil
+
+			case "esc":
+				m.viewportMode = "chat"
+				m.focusedDiffIndex = -1
+				m.updateViewport()
+				return m, nil
+			}
+		}
+
+		// Existing message submission logic
 		if msg.String() == "enter" && !m.streaming {
 			text := strings.TrimSpace(m.input.Value())
 			if text != "" {
@@ -133,6 +189,19 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 		m.buffer.Reset()
 		m.streaming = false
 		m.updateViewport()
+
+	case StreamDiffMsg:
+		diff := CollapsibleDiff{
+			ID:        fmt.Sprintf("diff-%d", time.Now().UnixNano()),
+			FilePath:  msg.FilePath,
+			DiffLines: parseDiffLines(msg.DiffText),
+			Expanded:  false, // collapsed by default
+			Timestamp: msg.Timestamp,
+		}
+		m.diffs = append(m.diffs, diff)
+		m.focusedDiffIndex = len(m.diffs) - 1 // auto-focus latest
+		m.viewportMode = "diff_nav"
+		m.updateViewport()
 	}
 
 	// Update sub-components
@@ -167,6 +236,13 @@ func (m *ChatModel) updateViewport() {
 		lines = append(lines, "")
 	}
 
+	// Render diffs
+	for i, diff := range m.diffs {
+		diffLines := m.renderDiff(diff, i == m.focusedDiffIndex)
+		lines = append(lines, diffLines...)
+		lines = append(lines, "")
+	}
+
 	if m.streaming && m.buffer.Len() == 0 {
 		lines = append(lines, m.theme.MutedStyle().Render("Thinking..."))
 	}
@@ -198,4 +274,12 @@ func (m *ChatModel) SetMode(mode agents.AgentMode) {
 
 func (m *ChatModel) SetModel(model string) {
 	m.statusBar.Model = model
+}
+
+// parseDiffLines splits git diff output into individual lines.
+func parseDiffLines(diffText string) []string {
+	if diffText == "" {
+		return []string{}
+	}
+	return strings.Split(diffText, "\n")
 }
