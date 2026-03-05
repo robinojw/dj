@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/config"
 	"github.com/robinojw/dj/internal/api"
+	"github.com/robinojw/dj/internal/lsp"
 	"github.com/robinojw/dj/internal/mcp"
 	"github.com/robinojw/dj/internal/skills"
 	"github.com/robinojw/dj/internal/tui"
@@ -55,6 +56,22 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Warning: MCP startup error: %v\n", err)
 	}
 	defer mcpRegistry.StopAll()
+
+	// Auto-detect and start LSP server
+	var lspClient *lsp.Client
+	if cfg.LSP.Enabled || cfg.LSP.Language == "" {
+		cwd, _ := os.Getwd()
+		if detected := lsp.Detect(cwd); detected != nil {
+			lspClient = lsp.NewClient(detected.Config, detected.RootPath)
+			if err := lspClient.Start(ctx); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: LSP server failed to start: %v\n", err)
+				lspClient = nil
+			} else {
+				defer lspClient.Close()
+			}
+		}
+	}
+	_ = lspClient // will be wired to app in future steps
 
 	app := tui.NewApp(t, client, tracker, cfg.Model.Default)
 

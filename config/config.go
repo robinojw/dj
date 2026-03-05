@@ -12,6 +12,13 @@ type Config struct {
 	Theme  ThemeConfig  `toml:"theme"`
 	MCP    MCPConfig    `toml:"mcp"`
 	Skills SkillsConfig `toml:"skills"`
+	LSP    LSPConfig    `toml:"lsp"`
+}
+
+type LSPConfig struct {
+	Enabled  bool   `toml:"enabled"`
+	Language string `toml:"language"` // override auto-detect
+	Command  string `toml:"command"`  // override default server
 }
 
 type ModelConfig struct {
