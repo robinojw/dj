@@ -48,6 +48,30 @@ const (
 	ToolNetwork                    // web_fetch, http_request
 )
 
+// toolClasses maps tool names to their security classification.
+var toolClasses = map[string]ToolClass{
+	"read_file":    ToolRead,
+	"list_dir":     ToolRead,
+	"search_code":  ToolRead,
+	"write_file":   ToolWrite,
+	"create_file":  ToolWrite,
+	"delete_file":  ToolWrite,
+	"bash":         ToolExec,
+	"run_script":   ToolExec,
+	"run_tests":    ToolExec,
+	"web_fetch":    ToolNetwork,
+	"http_request": ToolNetwork,
+}
+
+// ClassifyTool returns the security class of a tool.
+// Unknown tools default to ToolWrite (conservative).
+func ClassifyTool(toolName string) ToolClass {
+	if class, ok := toolClasses[toolName]; ok {
+		return class
+	}
+	return ToolWrite // default to conservative
+}
+
 // GateDecision is the result of gate evaluation.
 type GateDecision int
 
