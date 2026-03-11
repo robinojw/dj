@@ -110,7 +110,7 @@ func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 func (o *Orchestrator) ListenForUpdates() tea.Cmd {
 	return func() tea.Msg {
 		update := <-o.UpdatesCh
-		if update.Type == UpdateCompleted || update.Type == UpdateError {
+		if update.Type == UpdateCompleted || update.Type == UpdateError || update.Type == UpdateSkipped {
 			if update.Usage.InputTokens > 0 {
 				o.tracker.Record(api.Usage{
 					InputTokens:  update.Usage.InputTokens,
