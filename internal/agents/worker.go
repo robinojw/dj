@@ -30,8 +30,8 @@ type Worker struct {
 	memory       *memory.Manager
 	model        string
 	parentID     string
-	gate         *modes.Gate
 	registry     *tools.ToolRegistry
+	gate         *modes.Gate
 	permReqCh    chan<- modes.PermissionRequest
 	lastToolName string
 	lastToolArgs map[string]any
@@ -198,7 +198,7 @@ func (w *Worker) streamResponse(
 }
 
 // executeToolCalls runs each function call through the permission gate and
-// ToolRegistry, generates diffs for destructive operations, and returns
+// ToolRegistry, generates diffs for mutating operations, and returns
 // FunctionCallResult items to feed back to the API.
 func (w *Worker) executeToolCalls(
 	ctx context.Context,
@@ -218,9 +218,9 @@ func (w *Worker) executeToolCalls(
 			output = fmt.Sprintf("Error: %v", err)
 		}
 
-		// Generate diff if this was a destructive operation
-		if err == nil && w.isDestructiveTool(call.Name) {
-			if filePath, ok := extractFilePath(args); ok {
+		// Generate diff if this tool mutates files
+		if err == nil && w.isMutatingTool(call.Name) {
+			if filePath, ok := w.extractToolFilePath(call.Name, args); ok {
 				if diff, diffErr := generateGitDiff(filePath); diffErr == nil {
 					updates <- WorkerUpdate{
 						WorkerID: w.ID,
@@ -340,15 +340,35 @@ func (w *Worker) buildInstructions() string {
 	return base
 }
 
-// isDestructiveTool returns true if the tool is annotated as destructive in the registry,
-// falling back to hardcoded names for tools not in the registry.
-func (w *Worker) isDestructiveTool(toolName string) bool {
-	if w.registry != nil && w.registry.Has(toolName) {
-		return w.registry.IsDestructive(toolName)
+// isMutatingTool returns true if the tool's annotations indicate it writes to the filesystem.
+// Returns false for unregistered tools — no hardcoded fallback.
+func (w *Worker) isMutatingTool(toolName string) bool {
+	if w.registry == nil {
+		return false
 	}
-	return toolName == "edit_file" ||
-		toolName == "write_file" ||
-		toolName == "delete_file"
+	if !w.registry.HasAnnotations(toolName) {
+		return false
+	}
+	return w.registry.Annotations(toolName).MutatesFiles
+}
+
+// extractToolFilePath uses registry annotations to find the file path arg.
+// Falls back to multi-key scan for unregistered tools.
+func (w *Worker) extractToolFilePath(toolName string, args map[string]any) (string, bool) {
+	if w.registry != nil && w.registry.HasAnnotations(toolName) {
+		if key := w.registry.Annotations(toolName).FilePathParam; key != "" {
+			if args == nil {
+				return "", false
+			}
+			if val, ok := args[key]; ok {
+				if str, ok := val.(string); ok && str != "" {
+					return str, true
+				}
+			}
+			return "", false
+		}
+	}
+	return extractFilePath(args)
 }
 
 // generateGitDiff runs git diff for the given file and returns the output.

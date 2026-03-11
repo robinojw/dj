@@ -74,6 +74,57 @@ func TestGate_Evaluate_TurboMode(t *testing.T) {
 	}
 }
 
+func TestGate_Evaluate_WithRegistry(t *testing.T) {
+	// A custom MCP tool that the static map doesn't know about
+	// but the registry says is read-only
+	registry := &mockClassifier{readOnly: true, known: true}
+	gate := NewGateWithRegistry(ModeConfirm, []string{}, []string{}, registry)
+
+	// Should classify as ToolRead via registry, so auto-allow in Confirm
+	if got := gate.Evaluate("custom_mcp_reader", nil); got != GateAllow {
+		t.Errorf("Expected GateAllow for registry-known read tool, got %v", got)
+	}
+}
+
+func TestGate_Evaluate_WithRegistry_UnknownFallsBack(t *testing.T) {
+	registry := &mockClassifier{known: false}
+	gate := NewGateWithRegistry(ModeConfirm, []string{}, []string{}, registry)
+
+	// Unknown to registry, falls back to static map: bash → ToolExec → AskUser
+	if got := gate.Evaluate("bash", nil); got != GateAskUser {
+		t.Errorf("Expected GateAskUser for fallback, got %v", got)
+	}
+}
+
+type mockClassifier struct {
+	readOnly     bool
+	destructive  bool
+	mutatesFiles bool
+	known        bool
+}
+
+func (m *mockClassifier) ToolAnnotations(name string) (bool, bool, bool, bool) {
+	if !m.known {
+		return false, false, false, false
+	}
+	return m.readOnly, m.destructive, m.mutatesFiles, true
+}
+
+func TestGate_RegistryAnnotation_OverridesStaticMap(t *testing.T) {
+	// "unknown_tool" defaults to ToolWrite in static map → AskUser in Confirm
+	gate1 := NewGate(ModeConfirm, nil, nil)
+	if got := gate1.Evaluate("unknown_tool", nil); got != GateAskUser {
+		t.Fatalf("Without registry: expected AskUser, got %v", got)
+	}
+
+	// With registry saying it's read-only → GateAllow in Confirm
+	registry := &mockClassifier{readOnly: true, known: true}
+	gate2 := NewGateWithRegistry(ModeConfirm, nil, nil, registry)
+	if got := gate2.Evaluate("unknown_tool", nil); got != GateAllow {
+		t.Errorf("With registry (read-only): expected GateAllow, got %v", got)
+	}
+}
+
 func TestGate_AllowForSession(t *testing.T) {
 	gate := NewGate(ModeConfirm, []string{}, []string{})
 

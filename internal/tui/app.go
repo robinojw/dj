@@ -13,6 +13,7 @@ import (
 	"github.com/robinojw/dj/internal/checkpoint"
 	"github.com/robinojw/dj/internal/hooks"
 	"github.com/robinojw/dj/internal/modes"
+	"github.com/robinojw/dj/internal/tools"
 	"github.com/robinojw/dj/internal/tui/components"
 	"github.com/robinojw/dj/internal/tui/screens"
 	"github.com/robinojw/dj/internal/tui/theme"
@@ -67,11 +68,13 @@ func NewApp(
 	tracker *api.Tracker,
 	model string,
 	cfg config.Config,
+	toolRegistry *tools.ToolRegistry,
 ) App {
-	gate := modes.NewGate(
+	gate := modes.NewGateWithRegistry(
 		modes.ModeConfirm,
 		cfg.Execution.Allow.Tools,
 		cfg.Execution.Deny.Tools,
+		toolRegistry,
 	)
 
 	app := App{

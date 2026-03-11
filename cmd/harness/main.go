@@ -14,6 +14,7 @@ import (
 	"github.com/robinojw/dj/internal/mcp"
 	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/skills"
+	"github.com/robinojw/dj/internal/tools"
 	"github.com/robinojw/dj/internal/tui"
 	"github.com/robinojw/dj/internal/tui/theme"
 )
@@ -102,7 +103,11 @@ func main() {
 	defer hookRunner.Fire(hooks.HookSessionEnd, map[string]string{"summary": "session ended"})
 	_ = hookRunner // will be wired to app in future steps
 
-	app := tui.NewApp(t, client, tracker, cfg.Model.Default, cfg)
+	// Create tool registry
+	cwd, _ := os.Getwd()
+	toolRegistry := tools.NewDefaultRegistry(cwd)
+
+	app := tui.NewApp(t, client, tracker, cfg.Model.Default, cfg, toolRegistry)
 
 	p := tea.NewProgram(app,
 		tea.WithAltScreen(),

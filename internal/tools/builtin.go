@@ -10,19 +10,27 @@ func NewDefaultRegistry(workspaceRoot string) *ToolRegistry {
 	})
 
 	r.Register("write_file", WriteFileHandler(workspaceRoot), ToolAnnotations{
-		Destructive: true,
+		Destructive:   true,
+		MutatesFiles:  true,
+		FilePathParam: "file_path",
 	})
 
 	r.Register("edit_file", EditFileHandler(workspaceRoot), ToolAnnotations{
-		Destructive: true,
+		Destructive:   true,
+		MutatesFiles:  true,
+		FilePathParam: "file_path",
 	})
 
 	r.Register("str_replace", EditFileHandler(workspaceRoot), ToolAnnotations{
-		Destructive: true,
+		Destructive:   true,
+		MutatesFiles:  true,
+		FilePathParam: "file_path",
 	})
 
 	r.Register("delete_file", DeleteFileHandler(workspaceRoot), ToolAnnotations{
-		Destructive: true,
+		Destructive:   true,
+		MutatesFiles:  true,
+		FilePathParam: "file_path",
 	})
 
 	r.Register("list_dir", ListDirHandler(workspaceRoot), ToolAnnotations{
