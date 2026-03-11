@@ -12,6 +12,7 @@ import (
 	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/modes"
 	"github.com/robinojw/dj/internal/skills"
+	"github.com/robinojw/dj/internal/tools"
 )
 
 // Worker is a sub-agent goroutine that processes a single subtask.
@@ -26,6 +27,7 @@ type Worker struct {
 	memory       *memory.Manager
 	model        string
 	parentID     string
+	registry     *tools.ToolRegistry
 	gate         *modes.Gate
 	permReqCh    chan<- modes.PermissionRequest
 	lastToolName string
@@ -115,10 +117,10 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 			}
 
 		case "response.function_call_result":
-			// Generate diff if this was an edit operation
-			if isEditTool(w.lastToolName) {
-				if filePath, ok := extractFilePath(w.lastToolArgs); ok {
-					if diff, err := generateGitDiff(filePath); err == nil {
+			// Generate diff if this tool mutates files
+			if w.isMutatingTool(w.lastToolName) {
+				if filePath, ok := w.extractToolFilePath(w.lastToolName, w.lastToolArgs); ok {
+					if diff, diffErr := generateGitDiff(filePath); diffErr == nil {
 						updates <- WorkerUpdate{
 							WorkerID: w.ID,
 							Type:     UpdateDiffResult,
@@ -126,7 +128,6 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 							DiffInfo: &diff,
 						}
 					}
-					// Silently ignore errors (not in git repo, etc.)
 				}
 			}
 
@@ -243,11 +244,35 @@ func (w *Worker) buildInstructions() string {
 	return base
 }
 
-// isEditTool returns true if the tool modifies files.
-func isEditTool(toolName string) bool {
-	return toolName == "edit_file" ||
-		toolName == "write_file" ||
-		toolName == "delete_file"
+// isMutatingTool returns true if the tool's annotations indicate it writes to the filesystem.
+// Returns false for unregistered tools — no hardcoded fallback.
+func (w *Worker) isMutatingTool(toolName string) bool {
+	if w.registry == nil {
+		return false
+	}
+	if !w.registry.HasAnnotations(toolName) {
+		return false
+	}
+	return w.registry.Annotations(toolName).MutatesFiles
+}
+
+// extractToolFilePath uses registry annotations to find the file path arg.
+// Falls back to multi-key scan for unregistered tools.
+func (w *Worker) extractToolFilePath(toolName string, args map[string]any) (string, bool) {
+	if w.registry != nil && w.registry.HasAnnotations(toolName) {
+		if key := w.registry.Annotations(toolName).FilePathParam; key != "" {
+			if args == nil {
+				return "", false
+			}
+			if val, ok := args[key]; ok {
+				if str, ok := val.(string); ok && str != "" {
+					return str, true
+				}
+			}
+			return "", false
+		}
+	}
+	return extractFilePath(args)
 }
 
 // generateGitDiff runs git diff for the given file and returns the output.
