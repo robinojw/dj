@@ -21,6 +21,10 @@ func NewDefaultRegistry(workspaceRoot string) *ToolRegistry {
 		Destructive: true,
 	})
 
+	r.Register("delete_file", DeleteFileHandler(workspaceRoot), ToolAnnotations{
+		Destructive: true,
+	})
+
 	r.Register("list_dir", ListDirHandler(workspaceRoot), ToolAnnotations{
 		ReadOnly:   true,
 		Idempotent: true,

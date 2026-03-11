@@ -105,7 +105,7 @@ func TestRegistry_Names(t *testing.T) {
 func TestDefaultRegistry(t *testing.T) {
 	r := NewDefaultRegistry(t.TempDir())
 
-	expected := []string{"read_file", "write_file", "edit_file", "str_replace", "list_dir", "run_tests"}
+	expected := []string{"read_file", "write_file", "edit_file", "str_replace", "delete_file", "list_dir", "run_tests"}
 	for _, name := range expected {
 		if !r.Has(name) {
 			t.Errorf("default registry missing tool %q", name)
@@ -125,6 +125,7 @@ func TestDefaultRegistry_Annotations(t *testing.T) {
 		{"write_file", false, true},
 		{"edit_file", false, true},
 		{"str_replace", false, true},
+		{"delete_file", false, true},
 		{"list_dir", true, false},
 		{"run_tests", true, false},
 	}

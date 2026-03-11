@@ -37,6 +37,11 @@ func EditFileHandler(workspaceRoot string) ToolHandler {
 			return "", fmt.Errorf("edit_file: %w", err)
 		}
 
+		info, err := os.Stat(absPath)
+		if err != nil {
+			return "", fmt.Errorf("edit_file: %w", err)
+		}
+
 		data, err := os.ReadFile(absPath)
 		if err != nil {
 			return "", fmt.Errorf("edit_file: %w", err)
@@ -48,7 +53,8 @@ func EditFileHandler(workspaceRoot string) ToolHandler {
 			return "", fmt.Errorf("edit_file: old_string not found in %s", filePath)
 		}
 
-		if err := os.WriteFile(absPath, []byte(replaced), 0644); err != nil {
+		// Preserve original file permissions
+		if err := os.WriteFile(absPath, []byte(replaced), info.Mode()); err != nil {
 			return "", fmt.Errorf("edit_file: write failed: %w", err)
 		}
 
@@ -119,17 +125,16 @@ func trimmedLineReplace(content, oldStr, newStr string) (string, bool) {
 }
 
 // normalizedReplace normalizes all whitespace runs to single spaces for comparison.
+// Uses collapseWhitespace (no trim) for index mapping so positions are accurate.
 func normalizedReplace(content, oldStr, newStr string) (string, bool) {
-	normContent := normalizeWhitespace(content)
-	normOld := normalizeWhitespace(oldStr)
+	normContent := collapseWhitespace(content)
+	normOld := collapseWhitespace(oldStr)
 
 	idx := strings.Index(normContent, normOld)
 	if idx == -1 {
 		return "", false
 	}
 
-	// Map the normalized index back to the original content.
-	// Walk the original content tracking normalized position.
 	origStart := mapNormIdx(content, idx)
 	origEnd := mapNormIdx(content, idx+len(normOld))
 
@@ -138,7 +143,14 @@ func normalizedReplace(content, oldStr, newStr string) (string, bool) {
 }
 
 // normalizeWhitespace collapses all whitespace runs to a single space and trims.
+// Use for display or comparison where leading/trailing whitespace is irrelevant.
 func normalizeWhitespace(s string) string {
+	return strings.TrimSpace(collapseWhitespace(s))
+}
+
+// collapseWhitespace collapses all whitespace runs to a single space without trimming.
+// Preserves positional correspondence with the original for index mapping.
+func collapseWhitespace(s string) string {
 	var sb strings.Builder
 	inSpace := false
 	for _, r := range s {
@@ -152,23 +164,28 @@ func normalizeWhitespace(s string) string {
 			inSpace = false
 		}
 	}
-	return strings.TrimSpace(sb.String())
+	return sb.String()
 }
 
-// mapNormIdx maps a position in the normalized string back to the original.
+// mapNormIdx maps a position in the collapsed string back to the original.
+// Each whitespace run in the original maps to one character in the collapsed form.
 func mapNormIdx(original string, normIdx int) int {
 	normPos := 0
 	inSpace := false
 	for i, r := range original {
-		if normPos >= normIdx {
-			return i
-		}
-		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+		isWS := r == ' ' || r == '\t' || r == '\n' || r == '\r'
+		if isWS {
 			if !inSpace {
+				if normPos >= normIdx {
+					return i
+				}
 				normPos++
 				inSpace = true
 			}
 		} else {
+			if normPos >= normIdx {
+				return i
+			}
 			normPos++
 			inSpace = false
 		}

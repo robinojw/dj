@@ -20,6 +20,7 @@ func TestIsDestructiveTool_WithRegistry(t *testing.T) {
 		{"edit_file is destructive", "edit_file", true},
 		{"write_file is destructive", "write_file", true},
 		{"str_replace is destructive", "str_replace", true},
+		{"delete_file is destructive", "delete_file", true},
 		{"read_file is not destructive", "read_file", false},
 		{"list_dir is not destructive", "list_dir", false},
 		{"run_tests is not destructive", "run_tests", false},

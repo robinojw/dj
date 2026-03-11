@@ -9,6 +9,7 @@ import (
 )
 
 // RunTestsHandler returns a ToolHandler that wraps `go test ./...` and returns structured output.
+// NOTE: This is Go-specific. Other language test runners would need separate handlers.
 // workspaceRoot is used as the working directory for the test command.
 func RunTestsHandler(workspaceRoot string) ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {

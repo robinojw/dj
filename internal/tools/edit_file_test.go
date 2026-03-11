@@ -182,3 +182,85 @@ func TestNormalizeWhitespace(t *testing.T) {
 		})
 	}
 }
+
+func TestCollapseWhitespace(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"hello   world", "hello world"},
+		{"  leading", " leading"},
+		{"trailing  ", "trailing "},
+		{"hello\n\tworld", "hello world"},
+		{"no extra spaces", "no extra spaces"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			// collapseWhitespace does NOT trim, unlike normalizeWhitespace
+			got := collapseWhitespace(tt.input)
+			if got != tt.want {
+				t.Errorf("collapseWhitespace(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMapNormIdx_LeadingWhitespace(t *testing.T) {
+	// Regression test: content with leading whitespace must map correctly
+	original := "  hello   world"
+	// collapseWhitespace gives " hello world" (15 chars original, 12 collapsed)
+	// Position of 'h' in collapsed = 1, in original = 2
+	// Position of 'w' in collapsed = 7, in original = 10
+
+	if got := mapNormIdx(original, 1); got != 2 {
+		t.Errorf("mapNormIdx(%q, 1) = %d, want 2 (position of 'h')", original, got)
+	}
+	if got := mapNormIdx(original, 7); got != 10 {
+		t.Errorf("mapNormIdx(%q, 7) = %d, want 10 (position of 'w')", original, got)
+	}
+}
+
+func TestEditFile_NormalizedMatchWithLeadingWhitespace(t *testing.T) {
+	dir := t.TempDir()
+	// Content has leading whitespace and multiple spaces between words
+	os.WriteFile(filepath.Join(dir, "test.txt"), []byte("  hello   world   end"), 0644)
+
+	handler := EditFileHandler(dir)
+	_, err := handler(context.Background(), map[string]any{
+		"file_path":  "test.txt",
+		"old_string": "hello world",
+		"new_string": "hi earth",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "test.txt"))
+	got := string(data)
+	// The leading whitespace and "   end" should be preserved
+	if got != "  hi earth   end" {
+		t.Errorf("file content = %q, want %q", got, "  hi earth   end")
+	}
+}
+
+func TestEditFile_PreservesPermissions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "script.sh")
+	os.WriteFile(path, []byte("echo hello"), 0755)
+
+	handler := EditFileHandler(dir)
+	_, err := handler(context.Background(), map[string]any{
+		"file_path":  "script.sh",
+		"old_string": "hello",
+		"new_string": "world",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	info, _ := os.Stat(path)
+	if info.Mode().Perm() != 0755 {
+		t.Errorf("permissions = %o, want %o", info.Mode().Perm(), 0755)
+	}
+}

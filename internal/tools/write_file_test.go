@@ -64,20 +64,24 @@ func TestWriteFile_BackupOnOverwrite(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Check that backup was created
-	entries, _ := os.ReadDir(dir)
+	// Check that backup was created in .dj-backups/
+	backupDir := filepath.Join(dir, ".dj-backups")
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		t.Fatalf("backup dir not created: %v", err)
+	}
 	backupFound := false
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "existing.txt.bak.") {
+		if strings.HasPrefix(e.Name(), "existing.txt.") {
 			backupFound = true
-			data, _ := os.ReadFile(filepath.Join(dir, e.Name()))
+			data, _ := os.ReadFile(filepath.Join(backupDir, e.Name()))
 			if string(data) != original {
 				t.Errorf("backup content = %q, want %q", data, original)
 			}
 		}
 	}
 	if !backupFound {
-		t.Error("no backup file created")
+		t.Error("no backup file created in .dj-backups/")
 	}
 
 	// Check new content

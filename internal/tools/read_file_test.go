@@ -127,3 +127,18 @@ func TestSafePath(t *testing.T) {
 		})
 	}
 }
+
+func TestSafePath_SymlinkEscape(t *testing.T) {
+	dir := t.TempDir()
+	// Create a symlink inside workspace pointing outside
+	linkPath := filepath.Join(dir, "evil_link")
+	err := os.Symlink("/etc", linkPath)
+	if err != nil {
+		t.Skip("symlinks not supported on this platform")
+	}
+
+	_, err = safePath(dir, "evil_link/passwd")
+	if err == nil {
+		t.Error("expected error for symlink escaping workspace, got nil")
+	}
+}

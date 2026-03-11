@@ -69,26 +69,34 @@ func ReadFileHandler(workspaceRoot string) ToolHandler {
 }
 
 // safePath resolves filePath relative to root and prevents path traversal.
+// Resolves symlinks to prevent symlink-based escapes from the workspace.
 func safePath(root, filePath string) (string, error) {
-	if filepath.IsAbs(filePath) {
-		// Absolute paths must be under root
-		cleaned := filepath.Clean(filePath)
-		rootCleaned := filepath.Clean(root)
-		if !strings.HasPrefix(cleaned, rootCleaned+string(filepath.Separator)) && cleaned != rootCleaned {
-			return "", fmt.Errorf("path %q is outside workspace root", filePath)
-		}
-		return cleaned, nil
-	}
-
-	abs := filepath.Join(root, filePath)
-	cleaned := filepath.Clean(abs)
 	rootCleaned := filepath.Clean(root)
-
-	if !strings.HasPrefix(cleaned, rootCleaned+string(filepath.Separator)) && cleaned != rootCleaned {
-		return "", fmt.Errorf("path %q escapes workspace root", filePath)
+	// Resolve symlinks in the root so all comparisons use canonical paths.
+	if resolved, err := filepath.EvalSymlinks(rootCleaned); err == nil {
+		rootCleaned = resolved
 	}
 
-	return cleaned, nil
+	var abs string
+	if filepath.IsAbs(filePath) {
+		abs = filepath.Clean(filePath)
+	} else {
+		abs = filepath.Clean(filepath.Join(rootCleaned, filePath))
+	}
+
+	// Resolve symlinks in the target path if it exists.
+	// For new files, resolve the parent directory to catch symlinked parents.
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	} else if resolved, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		abs = filepath.Join(resolved, filepath.Base(abs))
+	}
+
+	if !strings.HasPrefix(abs, rootCleaned+string(filepath.Separator)) && abs != rootCleaned {
+		return "", fmt.Errorf("path %q is outside workspace root", filePath)
+	}
+
+	return abs, nil
 }
 
 // stringArg extracts a string argument from the args map.
