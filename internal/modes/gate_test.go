@@ -110,6 +110,21 @@ func (m *mockClassifier) ToolAnnotations(name string) (bool, bool, bool, bool) {
 	return m.readOnly, m.destructive, m.mutatesFiles, true
 }
 
+func TestGate_RegistryAnnotation_OverridesStaticMap(t *testing.T) {
+	// "unknown_tool" defaults to ToolWrite in static map → AskUser in Confirm
+	gate1 := NewGate(ModeConfirm, nil, nil)
+	if got := gate1.Evaluate("unknown_tool", nil); got != GateAskUser {
+		t.Fatalf("Without registry: expected AskUser, got %v", got)
+	}
+
+	// With registry saying it's read-only → GateAllow in Confirm
+	registry := &mockClassifier{readOnly: true, known: true}
+	gate2 := NewGateWithRegistry(ModeConfirm, nil, nil, registry)
+	if got := gate2.Evaluate("unknown_tool", nil); got != GateAllow {
+		t.Errorf("With registry (read-only): expected GateAllow, got %v", got)
+	}
+}
+
 func TestGate_AllowForSession(t *testing.T) {
 	gate := NewGate(ModeConfirm, []string{}, []string{})
 
