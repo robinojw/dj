@@ -9,6 +9,7 @@ import (
 	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/modes"
 	"github.com/robinojw/dj/internal/skills"
+	"github.com/robinojw/dj/internal/tools"
 )
 
 // Orchestrator manages task decomposition and multi-agent dispatch.
@@ -19,6 +20,7 @@ type Orchestrator struct {
 	Mode      AgentMode
 	Memory    *memory.Manager
 	Gate      *modes.Gate
+	Registry  *tools.ToolRegistry
 	PermReqCh chan modes.PermissionRequest
 	client    *api.ResponsesClient
 	skills    *skills.Registry
@@ -48,7 +50,7 @@ func NewOrchestrator(
 func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 	o.mu.Lock()
 	for _, task := range subtasks {
-		w := NewWorker(task, o.client, o.skills, o.model, o.RootID, o.Mode, o.Memory, o.Gate, o.PermReqCh)
+		w := NewWorker(task, o.client, o.skills, o.model, o.RootID, o.Mode, o.Memory, o.Gate, o.Registry, o.PermReqCh)
 		o.Workers[w.ID] = w
 	}
 	o.mu.Unlock()

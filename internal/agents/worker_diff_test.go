@@ -4,26 +4,57 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+
+	"github.com/robinojw/dj/internal/tools"
 )
 
-func TestIsEditTool(t *testing.T) {
+func TestIsDestructiveTool_WithRegistry(t *testing.T) {
+	registry := tools.NewDefaultRegistry(t.TempDir())
+	w := &Worker{registry: registry}
+
 	tests := []struct {
 		name string
 		tool string
 		want bool
 	}{
-		{"edit_file is edit tool", "edit_file", true},
-		{"write_file is edit tool", "write_file", true},
-		{"delete_file is edit tool", "delete_file", true},
-		{"read_file is not edit tool", "read_file", false},
-		{"bash is not edit tool", "bash", false},
-		{"empty string is not edit tool", "", false},
+		{"edit_file is destructive", "edit_file", true},
+		{"write_file is destructive", "write_file", true},
+		{"str_replace is destructive", "str_replace", true},
+		{"read_file is not destructive", "read_file", false},
+		{"list_dir is not destructive", "list_dir", false},
+		{"run_tests is not destructive", "run_tests", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isEditTool(tt.tool); got != tt.want {
-				t.Errorf("isEditTool(%q) = %v, want %v", tt.tool, got, tt.want)
+			if got := w.isDestructiveTool(tt.tool); got != tt.want {
+				t.Errorf("isDestructiveTool(%q) = %v, want %v", tt.tool, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsDestructiveTool_Fallback(t *testing.T) {
+	// Worker with nil registry uses hardcoded fallback
+	w := &Worker{}
+
+	tests := []struct {
+		name string
+		tool string
+		want bool
+	}{
+		{"edit_file is destructive", "edit_file", true},
+		{"write_file is destructive", "write_file", true},
+		{"delete_file is destructive", "delete_file", true},
+		{"read_file is not destructive", "read_file", false},
+		{"bash is not destructive", "bash", false},
+		{"empty string is not destructive", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := w.isDestructiveTool(tt.tool); got != tt.want {
+				t.Errorf("isDestructiveTool(%q) = %v, want %v", tt.tool, got, tt.want)
 			}
 		})
 	}

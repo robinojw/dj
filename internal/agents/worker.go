@@ -12,6 +12,7 @@ import (
 	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/modes"
 	"github.com/robinojw/dj/internal/skills"
+	"github.com/robinojw/dj/internal/tools"
 )
 
 // Worker is a sub-agent goroutine that processes a single subtask.
@@ -27,6 +28,7 @@ type Worker struct {
 	model        string
 	parentID     string
 	gate         *modes.Gate
+	registry     *tools.ToolRegistry
 	permReqCh    chan<- modes.PermissionRequest
 	lastToolName string
 	lastToolArgs map[string]any
@@ -41,6 +43,7 @@ func NewWorker(
 	mode AgentMode,
 	mem *memory.Manager,
 	gate *modes.Gate,
+	registry *tools.ToolRegistry,
 	permReqCh chan<- modes.PermissionRequest,
 ) *Worker {
 	return &Worker{
@@ -54,6 +57,7 @@ func NewWorker(
 		model:     model,
 		parentID:  parentID,
 		gate:      gate,
+		registry:  registry,
 		permReqCh: permReqCh,
 	}
 }
@@ -115,8 +119,8 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 			}
 
 		case "response.function_call_result":
-			// Generate diff if this was an edit operation
-			if isEditTool(w.lastToolName) {
+			// Generate diff if this was a destructive (edit/write/delete) operation
+			if w.isDestructiveTool(w.lastToolName) {
 				if filePath, ok := extractFilePath(w.lastToolArgs); ok {
 					if diff, err := generateGitDiff(filePath); err == nil {
 						updates <- WorkerUpdate{
@@ -159,16 +163,18 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 	w.Status = "completed"
 }
 
-// executeTool runs a tool call through the permission gate.
-func (w *Worker) executeTool(toolName string, args map[string]any) error {
+// executeTool runs a tool call through the permission gate and dispatches
+// to the native ToolRegistry handler when allowed.
+// Returns the tool output and any error.
+func (w *Worker) executeTool(ctx context.Context, toolName string, args map[string]any) (string, error) {
 	decision := w.gate.Evaluate(toolName, args)
 
 	switch decision {
 	case modes.GateDeny:
-		return fmt.Errorf("tool %q blocked by deny list or mode", toolName)
+		return "", fmt.Errorf("tool %q blocked by deny list or mode", toolName)
 
 	case modes.GateAllow:
-		return nil
+		return w.dispatchTool(ctx, toolName, args)
 
 	case modes.GateAskUser:
 		respCh := make(chan modes.PermissionResp, 1)
@@ -185,7 +191,7 @@ func (w *Worker) executeTool(toolName string, args map[string]any) error {
 		select {
 		case resp := <-respCh:
 			if !resp.Allowed {
-				return fmt.Errorf("user denied tool: %s", toolName)
+				return "", fmt.Errorf("user denied tool: %s", toolName)
 			}
 
 			if resp.RememberFor == modes.RememberSession {
@@ -197,15 +203,25 @@ func (w *Worker) executeTool(toolName string, args map[string]any) error {
 				}
 			}
 
-			return nil
+			return w.dispatchTool(ctx, toolName, args)
 
 		case <-time.After(5 * time.Minute):
-			return fmt.Errorf("permission request timed out")
+			return "", fmt.Errorf("permission request timed out")
 		}
 
 	default:
-		return fmt.Errorf("unknown gate decision: %v", decision)
+		return "", fmt.Errorf("unknown gate decision: %v", decision)
 	}
+}
+
+// dispatchTool executes a tool through the registry if a native handler exists,
+// otherwise returns empty output (tool execution deferred to the Responses API).
+func (w *Worker) dispatchTool(ctx context.Context, toolName string, args map[string]any) (string, error) {
+	if w.registry != nil && w.registry.Has(toolName) {
+		return w.registry.Dispatch(ctx, toolName, args)
+	}
+	// No native handler — execution deferred to the Responses API
+	return "", nil
 }
 
 // filterToolsForMode returns tools available in the worker's current mode.
@@ -243,8 +259,13 @@ func (w *Worker) buildInstructions() string {
 	return base
 }
 
-// isEditTool returns true if the tool modifies files.
-func isEditTool(toolName string) bool {
+// isDestructiveTool returns true if the tool is annotated as destructive in the registry,
+// falling back to hardcoded names for tools not in the registry.
+func (w *Worker) isDestructiveTool(toolName string) bool {
+	if w.registry != nil && w.registry.Has(toolName) {
+		return w.registry.IsDestructive(toolName)
+	}
+	// Fallback for tools not in the registry
 	return toolName == "edit_file" ||
 		toolName == "write_file" ||
 		toolName == "delete_file"
