@@ -72,6 +72,28 @@ func ClassifyTool(toolName string) ToolClass {
 	return ToolWrite // default to conservative
 }
 
+// ToolClassifier provides annotation data for tool classification.
+// Implemented by tools.ToolRegistry.
+type ToolClassifier interface {
+	ToolAnnotations(name string) (readOnly, destructive, mutatesFiles bool, ok bool)
+}
+
+// ClassifyToolWithRegistry consults registry annotations before the static map.
+func ClassifyToolWithRegistry(toolName string, registry ToolClassifier) ToolClass {
+	if registry != nil {
+		readOnly, destructive, mutatesFiles, ok := registry.ToolAnnotations(toolName)
+		if ok {
+			if readOnly {
+				return ToolRead
+			}
+			if destructive || mutatesFiles {
+				return ToolWrite
+			}
+		}
+	}
+	return ClassifyTool(toolName)
+}
+
 // GateDecision is the result of gate evaluation.
 type GateDecision int
 
