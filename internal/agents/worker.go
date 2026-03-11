@@ -12,7 +12,11 @@ import (
 	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/modes"
 	"github.com/robinojw/dj/internal/skills"
+	"github.com/robinojw/dj/internal/tools"
 )
+
+// maxToolTurns limits the number of tool-call round-trips to prevent infinite loops.
+const maxToolTurns = 25
 
 // Worker is a sub-agent goroutine that processes a single subtask.
 type Worker struct {
@@ -27,6 +31,7 @@ type Worker struct {
 	model        string
 	parentID     string
 	gate         *modes.Gate
+	registry     *tools.ToolRegistry
 	permReqCh    chan<- modes.PermissionRequest
 	lastToolName string
 	lastToolArgs map[string]any
@@ -41,6 +46,7 @@ func NewWorker(
 	mode AgentMode,
 	mem *memory.Manager,
 	gate *modes.Gate,
+	registry *tools.ToolRegistry,
 	permReqCh chan<- modes.PermissionRequest,
 ) *Worker {
 	return &Worker{
@@ -54,15 +60,17 @@ func NewWorker(
 		model:     model,
 		parentID:  parentID,
 		gate:      gate,
+		registry:  registry,
 		permReqCh: permReqCh,
 	}
 }
 
 // Run executes the worker's task and sends updates to the updates channel.
+// Supports multi-turn tool execution: when the model emits function calls,
+// the worker executes them through the ToolRegistry and feeds results back.
 func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 	w.Status = "running"
 
-	// Build system instructions including relevant skills
 	instructions := w.buildInstructions()
 
 	req := api.CreateResponseRequest{
@@ -75,18 +83,79 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 		Stream: true,
 	}
 
+	for turn := 0; turn < maxToolTurns; turn++ {
+		completedResponse, streamErr := w.streamResponse(ctx, req, updates)
+		if streamErr != nil {
+			updates <- WorkerUpdate{
+				WorkerID: w.ID,
+				Type:     UpdateError,
+				Error:    streamErr,
+			}
+			w.Status = "error"
+			return
+		}
+
+		if completedResponse == nil {
+			break
+		}
+
+		// Collect function calls from the completed response
+		var functionCalls []api.OutputItem
+		for _, item := range completedResponse.Output {
+			if item.Type == "function_call" {
+				functionCalls = append(functionCalls, item)
+			}
+		}
+
+		if len(functionCalls) == 0 {
+			// No tool calls — emit completion and finish
+			updates <- WorkerUpdate{
+				WorkerID: w.ID,
+				Type:     UpdateCompleted,
+				Content:  w.Output,
+				Usage: UsageInfo{
+					InputTokens:  completedResponse.Usage.InputTokens,
+					OutputTokens: completedResponse.Usage.OutputTokens,
+				},
+			}
+			break
+		}
+
+		// Execute each function call and collect results
+		results := w.executeToolCalls(ctx, functionCalls, updates)
+
+		// Build follow-up request with tool results
+		resultsJSON, _ := json.Marshal(results)
+		req = api.CreateResponseRequest{
+			Model:              w.model,
+			Input:              resultsJSON,
+			PreviousResponseID: completedResponse.ID,
+			Reasoning: &api.Reasoning{
+				Effort: Modes[w.Mode].ReasoningEffort,
+			},
+			Stream: true,
+		}
+	}
+
+	w.Status = "completed"
+}
+
+// streamResponse streams a single API response, forwarding text deltas and
+// tool call notifications to the updates channel. Returns the completed
+// response object (nil if the stream ended without one) and any stream error.
+func (w *Worker) streamResponse(
+	ctx context.Context,
+	req api.CreateResponseRequest,
+	updates chan<- WorkerUpdate,
+) (*api.ResponseObject, error) {
 	chunks, errs := w.client.Stream(ctx, req)
+
+	var completedResponse *api.ResponseObject
 
 	for chunk := range chunks {
 		select {
 		case <-ctx.Done():
-			updates <- WorkerUpdate{
-				WorkerID: w.ID,
-				Type:     UpdateError,
-				Error:    ctx.Err(),
-			}
-			w.Status = "error"
-			return
+			return nil, ctx.Err()
 		default:
 		}
 
@@ -101,7 +170,6 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 
 		case "response.output_item.added":
 			if chunk.Item != nil && chunk.Item.Type == "function_call" {
-				// Track tool name and args
 				w.lastToolName = chunk.Item.Name
 				if chunk.Item.Arguments != "" {
 					_ = json.Unmarshal([]byte(chunk.Item.Arguments), &w.lastToolArgs)
@@ -114,61 +182,83 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 				}
 			}
 
-		case "response.function_call_result":
-			// Generate diff if this was an edit operation
-			if isEditTool(w.lastToolName) {
-				if filePath, ok := extractFilePath(w.lastToolArgs); ok {
-					if diff, err := generateGitDiff(filePath); err == nil {
-						updates <- WorkerUpdate{
-							WorkerID: w.ID,
-							Type:     UpdateDiffResult,
-							Content:  diff.DiffText,
-							DiffInfo: &diff,
-						}
-					}
-					// Silently ignore errors (not in git repo, etc.)
-				}
-			}
-
 		case "response.completed":
 			if chunk.Response != nil {
-				updates <- WorkerUpdate{
-					WorkerID: w.ID,
-					Type:     UpdateCompleted,
-					Content:  w.Output,
-					Usage: UsageInfo{
-						InputTokens:  chunk.Response.Usage.InputTokens,
-						OutputTokens: chunk.Response.Usage.OutputTokens,
-					},
-				}
+				completedResponse = chunk.Response
 			}
 		}
 	}
 
 	// Check for stream errors
 	for err := range errs {
-		updates <- WorkerUpdate{
-			WorkerID: w.ID,
-			Type:     UpdateError,
-			Error:    err,
-		}
-		w.Status = "error"
-		return
+		return nil, err
 	}
 
-	w.Status = "completed"
+	return completedResponse, nil
 }
 
-// executeTool runs a tool call through the permission gate.
-func (w *Worker) executeTool(toolName string, args map[string]any) error {
+// executeToolCalls runs each function call through the permission gate and
+// ToolRegistry, generates diffs for destructive operations, and returns
+// FunctionCallResult items to feed back to the API.
+func (w *Worker) executeToolCalls(
+	ctx context.Context,
+	calls []api.OutputItem,
+	updates chan<- WorkerUpdate,
+) []api.FunctionCallResult {
+	results := make([]api.FunctionCallResult, 0, len(calls))
+
+	for _, call := range calls {
+		var args map[string]any
+		if call.Arguments != "" {
+			_ = json.Unmarshal([]byte(call.Arguments), &args)
+		}
+
+		output, err := w.executeTool(ctx, call.Name, args)
+		if err != nil {
+			output = fmt.Sprintf("Error: %v", err)
+		}
+
+		// Generate diff if this was a destructive operation
+		if err == nil && w.isDestructiveTool(call.Name) {
+			if filePath, ok := extractFilePath(args); ok {
+				if diff, diffErr := generateGitDiff(filePath); diffErr == nil {
+					updates <- WorkerUpdate{
+						WorkerID: w.ID,
+						Type:     UpdateDiffResult,
+						Content:  diff.DiffText,
+						DiffInfo: &diff,
+					}
+				}
+			}
+		}
+
+		updates <- WorkerUpdate{
+			WorkerID: w.ID,
+			Type:     UpdateToolResult,
+			Content:  output,
+		}
+
+		results = append(results, api.FunctionCallResult{
+			Type:   "function_call_output",
+			CallID: call.ID,
+			Output: output,
+		})
+	}
+
+	return results
+}
+
+// executeTool runs a tool call through the permission gate and dispatches
+// to the native ToolRegistry handler when allowed.
+func (w *Worker) executeTool(ctx context.Context, toolName string, args map[string]any) (string, error) {
 	decision := w.gate.Evaluate(toolName, args)
 
 	switch decision {
 	case modes.GateDeny:
-		return fmt.Errorf("tool %q blocked by deny list or mode", toolName)
+		return "", fmt.Errorf("tool %q blocked by deny list or mode", toolName)
 
 	case modes.GateAllow:
-		return nil
+		return w.dispatchTool(ctx, toolName, args)
 
 	case modes.GateAskUser:
 		respCh := make(chan modes.PermissionResp, 1)
@@ -185,7 +275,7 @@ func (w *Worker) executeTool(toolName string, args map[string]any) error {
 		select {
 		case resp := <-respCh:
 			if !resp.Allowed {
-				return fmt.Errorf("user denied tool: %s", toolName)
+				return "", fmt.Errorf("user denied tool: %s", toolName)
 			}
 
 			if resp.RememberFor == modes.RememberSession {
@@ -197,15 +287,24 @@ func (w *Worker) executeTool(toolName string, args map[string]any) error {
 				}
 			}
 
-			return nil
+			return w.dispatchTool(ctx, toolName, args)
 
 		case <-time.After(5 * time.Minute):
-			return fmt.Errorf("permission request timed out")
+			return "", fmt.Errorf("permission request timed out")
 		}
 
 	default:
-		return fmt.Errorf("unknown gate decision: %v", decision)
+		return "", fmt.Errorf("unknown gate decision: %v", decision)
 	}
+}
+
+// dispatchTool executes a tool through the registry if a native handler exists,
+// otherwise returns empty output (tool execution deferred to the Responses API).
+func (w *Worker) dispatchTool(ctx context.Context, toolName string, args map[string]any) (string, error) {
+	if w.registry != nil && w.registry.Has(toolName) {
+		return w.registry.Dispatch(ctx, toolName, args)
+	}
+	return "", nil
 }
 
 // filterToolsForMode returns tools available in the worker's current mode.
@@ -218,7 +317,6 @@ func (w *Worker) buildInstructions() string {
 	modeCfg := Modes[w.Mode]
 	base := modeCfg.SystemPrompt + "\n\n"
 
-	// Inject memory context if available
 	if w.memory != nil {
 		base += w.memory.LoadContext() + "\n\n"
 	}
@@ -232,7 +330,6 @@ func (w *Worker) buildInstructions() string {
 		}
 	}
 
-	// Check for implicitly matched skills
 	if w.skills != nil {
 		matcher := skills.NewMatcher(w.skills)
 		if skill := matcher.BestMatch(w.Task.Description); skill != nil {
@@ -243,15 +340,18 @@ func (w *Worker) buildInstructions() string {
 	return base
 }
 
-// isEditTool returns true if the tool modifies files.
-func isEditTool(toolName string) bool {
+// isDestructiveTool returns true if the tool is annotated as destructive in the registry,
+// falling back to hardcoded names for tools not in the registry.
+func (w *Worker) isDestructiveTool(toolName string) bool {
+	if w.registry != nil && w.registry.Has(toolName) {
+		return w.registry.IsDestructive(toolName)
+	}
 	return toolName == "edit_file" ||
 		toolName == "write_file" ||
 		toolName == "delete_file"
 }
 
 // generateGitDiff runs git diff for the given file and returns the output.
-// Returns error if not in a git repo or git command fails.
 func generateGitDiff(filePath string) (DiffInfo, error) {
 	cmd := exec.Command("git", "diff", "HEAD", filePath)
 	output, err := cmd.Output()
@@ -267,13 +367,11 @@ func generateGitDiff(filePath string) (DiffInfo, error) {
 }
 
 // extractFilePath extracts the file_path argument from tool call args.
-// Returns the path and true if found, empty string and false otherwise.
 func extractFilePath(args map[string]any) (string, bool) {
 	if args == nil {
 		return "", false
 	}
 
-	// Try common parameter names
 	for _, key := range []string{"file_path", "path", "filepath"} {
 		if val, ok := args[key]; ok {
 			if str, ok := val.(string); ok && str != "" {
