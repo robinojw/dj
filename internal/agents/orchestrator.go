@@ -134,7 +134,7 @@ func (o *Orchestrator) AllCompleted() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	for _, w := range o.Workers {
-		if w.Status != "completed" && w.Status != "error" {
+		if w.Status != "completed" && w.Status != "error" && w.Status != "skipped" {
 			return false
 		}
 	}

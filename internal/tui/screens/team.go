@@ -160,6 +160,8 @@ func statusIcon(status string) string {
 		return "✅"
 	case "error":
 		return "❌"
+	case "skipped":
+		return "⏭️"
 	default:
 		return "💤"
 	}

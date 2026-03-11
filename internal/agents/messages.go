@@ -21,6 +21,7 @@ const (
 	UpdateDiffResult                   // diff result from git
 	UpdateCompleted                    // worker finished
 	UpdateError                        // worker encountered an error
+	UpdateSkipped                      // worker skipped due to failed dependency
 )
 
 type UsageInfo struct {

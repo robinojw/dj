@@ -22,7 +22,7 @@ const maxToolTurns = 25
 type Worker struct {
 	ID           string
 	Task         Subtask
-	Status       string // "pending", "running", "completed", "error"
+	Status       string // "pending", "running", "completed", "error", "skipped"
 	Output       string
 	Mode         AgentMode
 	client       *api.ResponsesClient
