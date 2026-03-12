@@ -46,7 +46,7 @@ func NewOrchestrator(
 	}
 }
 
-// Dispatch spawns workers for each subtask.
+// Dispatch spawns workers for each subtask using topological scheduling.
 func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 	o.mu.Lock()
 	for _, task := range subtasks {
@@ -55,51 +55,64 @@ func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 	}
 	o.mu.Unlock()
 
-	// Launch workers, respecting dependencies
 	return func() tea.Msg {
+		dag, err := buildDAG(subtasks)
+		if err != nil {
+			o.UpdatesCh <- WorkerUpdate{
+				Type:    UpdateError,
+				Content: err.Error(),
+				Error:   err,
+			}
+			return nil
+		}
+
 		var wg sync.WaitGroup
-		completed := make(map[string]bool)
-		var completedMu sync.Mutex
+		doneCh := make(chan string, len(subtasks))
 
-		// Start independent tasks first
-		for _, w := range o.Workers {
-			if len(w.Task.DependsOn) == 0 {
-				wg.Add(1)
-				go func(worker *Worker) {
-					defer wg.Done()
-					worker.Run(context.Background(), o.UpdatesCh)
-					completedMu.Lock()
-					completed[worker.ID] = true
-					completedMu.Unlock()
-				}(w)
+		launch := func(id string) {
+			w := o.Workers[id]
+			if w == nil {
+				return
 			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				w.Run(context.Background(), o.UpdatesCh)
+				doneCh <- w.ID
+			}()
 		}
 
-		// Wait for independent tasks, then start dependent ones
-		wg.Wait()
+		// Start all initially ready tasks
+		for _, id := range dag.readySet() {
+			launch(id)
+		}
 
-		// Start tasks whose dependencies are met
-		for _, w := range o.Workers {
-			if len(w.Task.DependsOn) > 0 && w.Status == "pending" {
-				allDone := true
-				completedMu.Lock()
-				for _, dep := range w.Task.DependsOn {
-					if !completed[dep] {
-						allDone = false
-						break
+		// Coordinator: listen for completions, enqueue newly ready tasks
+		go func() {
+			remaining := len(subtasks)
+			for remaining > 0 {
+				id := <-doneCh
+				remaining--
+
+				w := o.Workers[id]
+				if w != nil && w.Status == "error" {
+					skipDependents(dag, id, o.Workers, o.UpdatesCh)
+					// Count skipped workers
+					o.mu.RLock()
+					for _, sw := range o.Workers {
+						if sw.Status == "skipped" {
+							remaining--
+						}
 					}
+					o.mu.RUnlock()
+					continue
 				}
-				completedMu.Unlock()
 
-				if allDone {
-					wg.Add(1)
-					go func(worker *Worker) {
-						defer wg.Done()
-						worker.Run(context.Background(), o.UpdatesCh)
-					}(w)
+				for _, readyID := range dag.markCompleted(id) {
+					launch(readyID)
 				}
 			}
-		}
+		}()
 
 		wg.Wait()
 		return nil
