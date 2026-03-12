@@ -118,10 +118,10 @@ func (d *dagState) markCompleted(taskID string) []string {
 // and sends UpdateSkipped for each.
 func skipDependents(dag *dagState, failedID string, workers map[string]*Worker, updates chan<- WorkerUpdate) {
 	dag.mu.Lock()
-	defer dag.mu.Unlock()
 
 	visited := make(map[string]bool)
 	queue := []string{failedID}
+	var pending []WorkerUpdate
 
 	for len(queue) > 0 {
 		current := queue[0]
@@ -136,13 +136,19 @@ func skipDependents(dag *dagState, failedID string, workers map[string]*Worker, 
 			if w, ok := workers[dep]; ok && w.Status == "pending" {
 				w.Status = "skipped"
 				delete(dag.inDegree, dep)
-				updates <- WorkerUpdate{
+				pending = append(pending, WorkerUpdate{
 					WorkerID: dep,
 					Type:     UpdateSkipped,
-				}
+				})
 			}
 
 			queue = append(queue, dep)
 		}
+	}
+
+	dag.mu.Unlock()
+
+	for _, u := range pending {
+		updates <- u
 	}
 }
