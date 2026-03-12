@@ -32,6 +32,7 @@ type DenyConfig struct {
 }
 
 type HooksConfig struct {
+	Timeout      string `toml:"timeout"`
 	PreToolCall  string `toml:"pre_tool_call"`
 	PostToolCall string `toml:"post_tool_call"`
 	OnError      string `toml:"on_error"`
