@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestExpandVars(t *testing.T) {
@@ -121,6 +122,47 @@ func TestFireNonZeroExit(t *testing.T) {
 	}
 	if result.ExitCode != 42 {
 		t.Errorf("ExitCode = %d, want 42", result.ExitCode)
+	}
+}
+
+func TestFireAsyncReturnsImmediately(t *testing.T) {
+	cfg := Config{
+		Hooks: map[string]string{
+			string(HookSessionEnd): "sleep 5",
+		},
+	}
+	runner := NewRunner(cfg)
+
+	start := time.Now()
+	runner.FireAsync(HookSessionEnd, nil)
+	elapsed := time.Since(start)
+
+	if elapsed > 100*time.Millisecond {
+		t.Errorf("FireAsync blocked for %v, expected immediate return", elapsed)
+	}
+}
+
+func TestFireTimeout(t *testing.T) {
+	cfg := Config{
+		Hooks: map[string]string{
+			string(HookPreToolCall): "sleep 10",
+		},
+		Timeout: 1 * time.Second,
+	}
+	runner := NewRunner(cfg)
+
+	start := time.Now()
+	result, err := runner.Fire(HookPreToolCall, nil)
+	elapsed := time.Since(start)
+
+	// Should complete within ~2s (1s timeout + WaitDelay grace)
+	if elapsed > 5*time.Second {
+		t.Errorf("Fire() took %v, expected timeout around 1-2s", elapsed)
+	}
+
+	// Either err is non-nil (infrastructure failure) or result has non-zero exit
+	if err == nil && result != nil && result.ExitCode == 0 && result.Err == nil {
+		t.Error("Expected timeout to produce an error or non-zero exit")
 	}
 }
 

@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os/exec"
@@ -66,8 +67,11 @@ func (r *Runner) Fire(event HookEvent, vars map[string]string) (*HookResult, err
 
 	expanded := expandVars(cmdTemplate, vars)
 
-	cmd := exec.Command("sh", "-c", expanded)
-	cmd.WaitDelay = r.config.timeout()
+	ctx, cancel := context.WithTimeout(context.Background(), r.config.timeout())
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "sh", "-c", expanded)
+	cmd.WaitDelay = 1 * time.Second
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
@@ -112,10 +116,12 @@ func (r *Runner) FireAsync(event HookEvent, vars map[string]string) {
 	expanded := expandVars(cmdTemplate, vars)
 
 	go func() {
-		cmd := exec.Command("sh", "-c", expanded)
+		ctx, cancel := context.WithTimeout(context.Background(), r.config.timeout())
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "sh", "-c", expanded)
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
-		cmd.WaitDelay = r.config.timeout()
+		cmd.WaitDelay = 1 * time.Second
 		_ = cmd.Run()
 	}()
 }
