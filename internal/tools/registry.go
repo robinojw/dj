@@ -2,8 +2,11 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/robinojw/dj/internal/api"
 )
 
 // ToolHandler is the signature for native tool implementations.
@@ -18,11 +21,18 @@ type ToolAnnotations struct {
 	FilePathParam string // arg key holding the target file path (e.g. "file_path")
 }
 
+// ToolSchema holds the API-facing description and parameter JSON schema for a tool.
+type ToolSchema struct {
+	Description string
+	Parameters  json.RawMessage
+}
+
 // ToolRegistry maps tool names to native Go handlers and annotations.
 type ToolRegistry struct {
 	mu          sync.RWMutex
 	handlers    map[string]ToolHandler
 	annotations map[string]ToolAnnotations
+	schemas     map[string]ToolSchema
 }
 
 // NewRegistry creates an empty ToolRegistry.
@@ -30,6 +40,7 @@ func NewRegistry() *ToolRegistry {
 	return &ToolRegistry{
 		handlers:    make(map[string]ToolHandler),
 		annotations: make(map[string]ToolAnnotations),
+		schemas:     make(map[string]ToolSchema),
 	}
 }
 
@@ -111,4 +122,40 @@ func (r *ToolRegistry) ToolAnnotations(name string) (readOnly, destructive, muta
 		return false, false, false, false
 	}
 	return ann.ReadOnly, ann.Destructive, ann.MutatesFiles, true
+}
+
+// RegisterSchema stores the API-facing schema for a tool.
+func (r *ToolRegistry) RegisterSchema(name string, schema ToolSchema) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.schemas[name] = schema
+}
+
+// ToolDefinitions returns API tool definitions, optionally filtered by an allow list.
+// If allowedTools is nil, all registered schemas are returned.
+func (r *ToolRegistry) ToolDefinitions(allowedTools []string) []api.Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	allowed := make(map[string]bool, len(allowedTools))
+	for _, name := range allowedTools {
+		allowed[name] = true
+	}
+	filterActive := len(allowedTools) > 0
+
+	tools := make([]api.Tool, 0, len(r.schemas))
+	for name, schema := range r.schemas {
+		if filterActive && !allowed[name] {
+			continue
+		}
+		tools = append(tools, api.Tool{
+			Type: "function",
+			Function: &api.FunctionTool{
+				Name:        name,
+				Description: schema.Description,
+				Parameters:  schema.Parameters,
+			},
+		})
+	}
+	return tools
 }

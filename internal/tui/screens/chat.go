@@ -103,10 +103,11 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = msg.Width
+		contentWidth := msg.Width - 2 // 1-char horizontal padding each side
+		m.viewport.Width = contentWidth
 		m.viewport.Height = msg.Height - 4 // room for input + status
-		m.input.SetWidth(msg.Width)
-		m.statusBar.Width = msg.Width
+		m.input.SetWidth(contentWidth)
+		m.statusBar.Width = contentWidth
 		m.updateViewport()
 
 	case tea.KeyMsg:
@@ -252,11 +253,12 @@ func (m *ChatModel) updateViewport() {
 }
 
 func (m ChatModel) View() string {
-	return lipgloss.JoinVertical(lipgloss.Left,
+	content := lipgloss.JoinVertical(lipgloss.Left,
 		m.viewport.View(),
 		m.input.View(),
 		m.statusBar.View(),
 	)
+	return lipgloss.NewStyle().Padding(0, 1).Render(content)
 }
 
 func (m *ChatModel) SetCost(cost float64) {

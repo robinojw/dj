@@ -156,8 +156,8 @@ func TestChatModel_WindowResize(t *testing.T) {
 	if m.height != 40 {
 		t.Errorf("height = %d, want 40", m.height)
 	}
-	if m.viewport.Width != 120 {
-		t.Errorf("viewport.Width = %d, want 120", m.viewport.Width)
+	if m.viewport.Width != 118 { // 120 - 2 for horizontal padding
+		t.Errorf("viewport.Width = %d, want 118", m.viewport.Width)
 	}
 	// viewport height = total height - 4 (room for input + status)
 	if m.viewport.Height != 36 {

@@ -76,13 +76,15 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 	w.Status = "running"
 
 	instructions := w.buildInstructions()
+	modeCfg := Modes[w.Mode]
 
 	req := api.CreateResponseRequest{
 		Model:        w.model,
 		Input:        api.MakeStringInput(w.Task.Description),
 		Instructions: instructions,
+		Tools:        w.buildToolDefs(modeCfg),
 		Reasoning: &api.Reasoning{
-			Effort: Modes[w.Mode].ReasoningEffort,
+			Effort: modeCfg.ReasoningEffort,
 		},
 		Stream: true,
 	}
@@ -381,6 +383,14 @@ func (w *Worker) buildInstructions() string {
 	}
 
 	return base
+}
+
+// buildToolDefs returns API tool definitions filtered by the current mode.
+func (w *Worker) buildToolDefs(modeCfg modes.ModeConfig) []api.Tool {
+	if w.registry == nil {
+		return nil
+	}
+	return w.registry.ToolDefinitions(modeCfg.AllowedTools)
 }
 
 // isMutatingTool returns true if the tool's annotations indicate it writes to the filesystem.
