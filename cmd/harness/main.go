@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/config"
@@ -92,6 +93,14 @@ func main() {
 	_ = memMgr // will be wired to app in future steps
 
 	// Set up event hooks
+	var hookTimeout time.Duration
+	if cfg.Hooks.Timeout != "" {
+		if parsed, err := time.ParseDuration(cfg.Hooks.Timeout); err == nil {
+			hookTimeout = parsed
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: invalid hooks timeout %q: %v\n", cfg.Hooks.Timeout, err)
+		}
+	}
 	hookRunner := hooks.NewRunner(hooks.Config{
 		Hooks: map[string]string{
 			string(hooks.HookPreToolCall):  cfg.Hooks.PreToolCall,
@@ -99,15 +108,15 @@ func main() {
 			string(hooks.HookOnError):      cfg.Hooks.OnError,
 			string(hooks.HookSessionEnd):   cfg.Hooks.OnSessionEnd,
 		},
+		Timeout: hookTimeout,
 	})
-	defer hookRunner.Fire(hooks.HookSessionEnd, map[string]string{"summary": "session ended"})
-	_ = hookRunner // will be wired to app in future steps
+	defer hookRunner.FireAsync(hooks.HookSessionEnd, map[string]string{"summary": "session ended"})
 
 	// Create tool registry
 	cwd, _ := os.Getwd()
 	toolRegistry := tools.NewDefaultRegistry(cwd)
 
-	app := tui.NewApp(t, client, tracker, cfg.Model.Default, cfg, toolRegistry)
+	app := tui.NewApp(t, client, tracker, cfg.Model.Default, cfg, toolRegistry, hookRunner)
 
 	p := tea.NewProgram(app,
 		tea.WithAltScreen(),

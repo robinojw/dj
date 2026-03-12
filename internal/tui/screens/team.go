@@ -22,7 +22,7 @@ type AgentSelectedMsg struct {
 type AgentStatus struct {
 	ID       string
 	Name     string
-	Status   string // "running", "idle", "completed", "error"
+	Status   string // "running", "idle", "completed", "error", "skipped"
 	ParentID string
 	Output   string
 }
@@ -160,6 +160,8 @@ func statusIcon(status string) string {
 		return "✅"
 	case "error":
 		return "❌"
+	case "skipped":
+		return "⏭️"
 	default:
 		return "💤"
 	}

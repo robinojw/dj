@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/internal/api"
+	"github.com/robinojw/dj/internal/hooks"
 	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/modes"
 	"github.com/robinojw/dj/internal/skills"
@@ -22,6 +23,7 @@ type Orchestrator struct {
 	Gate      *modes.Gate
 	Registry  *tools.ToolRegistry
 	PermReqCh chan modes.PermissionRequest
+	Hooks     *hooks.Runner
 	client    *api.ResponsesClient
 	skills    *skills.Registry
 	model     string
@@ -46,60 +48,67 @@ func NewOrchestrator(
 	}
 }
 
-// Dispatch spawns workers for each subtask.
+// Dispatch spawns workers for each subtask using topological scheduling.
 func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 	o.mu.Lock()
 	for _, task := range subtasks {
-		w := NewWorker(task, o.client, o.skills, o.model, o.RootID, o.Mode, o.Memory, o.Gate, o.Registry, o.PermReqCh)
+		w := NewWorker(task, o.client, o.skills, o.model, o.RootID, o.Mode, o.Memory, o.Gate, o.Registry, o.PermReqCh, o.Hooks)
 		o.Workers[w.ID] = w
 	}
 	o.mu.Unlock()
 
-	// Launch workers, respecting dependencies
 	return func() tea.Msg {
+		dag, err := buildDAG(subtasks)
+		if err != nil {
+			o.UpdatesCh <- WorkerUpdate{
+				Type:    UpdateError,
+				Content: err.Error(),
+				Error:   err,
+			}
+			return nil
+		}
+
 		var wg sync.WaitGroup
-		completed := make(map[string]bool)
-		var completedMu sync.Mutex
+		doneCh := make(chan string, len(subtasks))
 
-		// Start independent tasks first
-		for _, w := range o.Workers {
-			if len(w.Task.DependsOn) == 0 {
-				wg.Add(1)
-				go func(worker *Worker) {
-					defer wg.Done()
-					worker.Run(context.Background(), o.UpdatesCh)
-					completedMu.Lock()
-					completed[worker.ID] = true
-					completedMu.Unlock()
-				}(w)
+		launch := func(id string) {
+			w := o.Workers[id]
+			if w == nil {
+				doneCh <- id
+				return
 			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				w.Run(context.Background(), o.UpdatesCh)
+				doneCh <- w.ID
+			}()
 		}
 
-		// Wait for independent tasks, then start dependent ones
-		wg.Wait()
+		// Start all initially ready tasks
+		for _, id := range dag.readySet() {
+			launch(id)
+		}
 
-		// Start tasks whose dependencies are met
-		for _, w := range o.Workers {
-			if len(w.Task.DependsOn) > 0 && w.Status == "pending" {
-				allDone := true
-				completedMu.Lock()
-				for _, dep := range w.Task.DependsOn {
-					if !completed[dep] {
-						allDone = false
-						break
-					}
+		// Coordinator: listen for completions, enqueue newly ready tasks
+		go func() {
+			remaining := len(subtasks)
+			for remaining > 0 {
+				id := <-doneCh
+				remaining--
+
+				w := o.Workers[id]
+				if w != nil && w.Status == "error" {
+					skipped := skipDependents(dag, id, o.Workers, o.UpdatesCh)
+					remaining -= skipped
+					continue
 				}
-				completedMu.Unlock()
 
-				if allDone {
-					wg.Add(1)
-					go func(worker *Worker) {
-						defer wg.Done()
-						worker.Run(context.Background(), o.UpdatesCh)
-					}(w)
+				for _, readyID := range dag.markCompleted(id) {
+					launch(readyID)
 				}
 			}
-		}
+		}()
 
 		wg.Wait()
 		return nil
@@ -110,7 +119,7 @@ func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 func (o *Orchestrator) ListenForUpdates() tea.Cmd {
 	return func() tea.Msg {
 		update := <-o.UpdatesCh
-		if update.Type == UpdateCompleted || update.Type == UpdateError {
+		if update.Type == UpdateCompleted || update.Type == UpdateError || update.Type == UpdateSkipped {
 			if update.Usage.InputTokens > 0 {
 				o.tracker.Record(api.Usage{
 					InputTokens:  update.Usage.InputTokens,
@@ -134,7 +143,7 @@ func (o *Orchestrator) AllCompleted() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	for _, w := range o.Workers {
-		if w.Status != "completed" && w.Status != "error" {
+		if w.Status != "completed" && w.Status != "error" && w.Status != "skipped" {
 			return false
 		}
 	}

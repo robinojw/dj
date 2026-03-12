@@ -59,3 +59,10 @@ tools = [
     "read_file(.env*)",
     "write_file(.env*)",
 ]
+
+# [hooks]
+# timeout = "10s"
+# pre_tool_call = "echo 'Tool: {{tool_name}}'"
+# post_tool_call = ""
+# on_error = ""
+# on_session_end = ""

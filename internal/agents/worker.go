@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/robinojw/dj/internal/api"
+	"github.com/robinojw/dj/internal/hooks"
 	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/modes"
 	"github.com/robinojw/dj/internal/skills"
@@ -22,7 +23,7 @@ const maxToolTurns = 25
 type Worker struct {
 	ID           string
 	Task         Subtask
-	Status       string // "pending", "running", "completed", "error"
+	Status       string // "pending", "running", "completed", "error", "skipped"
 	Output       string
 	Mode         AgentMode
 	client       *api.ResponsesClient
@@ -33,6 +34,7 @@ type Worker struct {
 	registry     *tools.ToolRegistry
 	gate         *modes.Gate
 	permReqCh    chan<- modes.PermissionRequest
+	hooks        *hooks.Runner
 	lastToolName string
 	lastToolArgs map[string]any
 }
@@ -48,6 +50,7 @@ func NewWorker(
 	gate *modes.Gate,
 	registry *tools.ToolRegistry,
 	permReqCh chan<- modes.PermissionRequest,
+	hooks *hooks.Runner,
 ) *Worker {
 	return &Worker{
 		ID:        task.ID,
@@ -62,6 +65,7 @@ func NewWorker(
 		gate:      gate,
 		registry:  registry,
 		permReqCh: permReqCh,
+		hooks:     hooks,
 	}
 }
 
@@ -155,6 +159,11 @@ func (w *Worker) streamResponse(
 	for chunk := range chunks {
 		select {
 		case <-ctx.Done():
+			w.fireHook(hooks.HookOnError, map[string]string{
+				"error_msg": ctx.Err().Error(),
+				"worker_id": w.ID,
+				"tool_name": w.lastToolName,
+			}, updates)
 			return nil, ctx.Err()
 		default:
 		}
@@ -175,6 +184,13 @@ func (w *Worker) streamResponse(
 					_ = json.Unmarshal([]byte(chunk.Item.Arguments), &w.lastToolArgs)
 				}
 
+				argsJSON, _ := json.Marshal(w.lastToolArgs)
+				w.fireHook(hooks.HookPreToolCall, map[string]string{
+					"tool_name": chunk.Item.Name,
+					"tool_args": string(argsJSON),
+					"worker_id": w.ID,
+				}, updates)
+
 				updates <- WorkerUpdate{
 					WorkerID: w.ID,
 					Type:     UpdateToolCall,
@@ -191,6 +207,11 @@ func (w *Worker) streamResponse(
 
 	// Check for stream errors
 	for err := range errs {
+		w.fireHook(hooks.HookOnError, map[string]string{
+			"error_msg": err.Error(),
+			"worker_id": w.ID,
+			"tool_name": w.lastToolName,
+		}, updates)
 		return nil, err
 	}
 
@@ -217,6 +238,13 @@ func (w *Worker) executeToolCalls(
 		if err != nil {
 			output = fmt.Sprintf("Error: %v", err)
 		}
+
+		argsJSON, _ := json.Marshal(args)
+		w.fireHook(hooks.HookPostToolCall, map[string]string{
+			"tool_name": call.Name,
+			"tool_args": string(argsJSON),
+			"worker_id": w.ID,
+		}, updates)
 
 		// Generate diff if this tool mutates files
 		if err == nil && w.isMutatingTool(call.Name) {
@@ -305,6 +333,21 @@ func (w *Worker) dispatchTool(ctx context.Context, toolName string, args map[str
 		return w.registry.Dispatch(ctx, toolName, args)
 	}
 	return "", nil
+}
+
+// fireHook fires a hook and sends the result as an update. Advisory only — never fatal.
+func (w *Worker) fireHook(event hooks.HookEvent, vars map[string]string, updates chan<- WorkerUpdate) {
+	if w.hooks == nil {
+		return
+	}
+	result, _ := w.hooks.Fire(event, vars)
+	if result != nil {
+		updates <- WorkerUpdate{
+			WorkerID:   w.ID,
+			Type:       UpdateHookResult,
+			HookResult: result,
+		}
+	}
 }
 
 // filterToolsForMode returns tools available in the worker's current mode.
