@@ -1,6 +1,10 @@
 package agents
 
-import "time"
+import (
+	"time"
+
+	"github.com/robinojw/dj/internal/hooks"
+)
 
 // WorkerUpdate is a message sent from a worker goroutine to the orchestrator.
 type WorkerUpdate struct {
@@ -9,7 +13,8 @@ type WorkerUpdate struct {
 	Content  string
 	Error    error
 	Usage    UsageInfo
-	DiffInfo *DiffInfo // populated when Type == UpdateDiffResult
+	DiffInfo   *DiffInfo         // populated when Type == UpdateDiffResult
+	HookResult *hooks.HookResult // populated when Type == UpdateHookResult
 }
 
 type UpdateType int
@@ -22,6 +27,7 @@ const (
 	UpdateCompleted                    // worker finished
 	UpdateError                        // worker encountered an error
 	UpdateSkipped                      // worker skipped due to failed dependency
+	UpdateHookResult                   // hook execution result
 )
 
 type UsageInfo struct {
