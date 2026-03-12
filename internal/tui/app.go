@@ -28,6 +28,7 @@ const (
 	ScreenEnhance
 	ScreenMCP
 	ScreenSkills
+	ScreenCheatSheet
 )
 
 // App is the root bubbletea model.
@@ -39,6 +40,7 @@ type App struct {
 	enhance         screens.EnhanceModel
 	mcpManager      screens.MCPManagerModel
 	skillBrowser    screens.SkillBrowserModel
+	cheatSheet      screens.CheatSheetModel
 	theme           *theme.Theme
 	tracker         *api.Tracker
 	client          *api.ResponsesClient
@@ -80,12 +82,13 @@ func NewApp(
 	)
 
 	app := App{
-		screen:          ScreenChat,
+		screen:          ScreenCheatSheet,
 		chat:            screens.NewChatModel(t),
 		team:            screens.NewTeamModel(t),
 		enhance:         screens.NewEnhanceModel(t),
 		mcpManager:      screens.NewMCPManagerModel(t),
 		skillBrowser:    screens.NewSkillBrowserModel(t),
+		cheatSheet:      screens.NewCheatSheetModel(t),
 		theme:           t,
 		tracker:         tracker,
 		client:          client,
@@ -148,6 +151,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+t":
 			if a.screen != ScreenTeam {
 				return a, a.pushScreen(ScreenTeam)
+			}
+		case "ctrl+h":
+			if a.screen != ScreenCheatSheet {
+				return a, a.pushScreen(ScreenCheatSheet)
 			}
 		case "ctrl+_":
 			a.cycleModel()
@@ -264,6 +271,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.mcpManager, cmd = a.mcpManager.Update(msg)
 	case ScreenSkills:
 		a.skillBrowser, cmd = a.skillBrowser.Update(msg)
+	case ScreenCheatSheet:
+		a.cheatSheet, cmd = a.cheatSheet.Update(msg)
 	}
 
 	return a, cmd
@@ -280,6 +289,8 @@ func (a App) View() string {
 		base = a.mcpManager.View()
 	case ScreenSkills:
 		base = a.skillBrowser.View()
+	case ScreenCheatSheet:
+		base = a.cheatSheet.View()
 	default:
 		base = a.chat.View()
 	}
