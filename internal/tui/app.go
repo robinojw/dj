@@ -50,6 +50,7 @@ type App struct {
 	turboConfirmed  bool
 	permRequestCh   chan modes.PermissionRequest
 	checkpoints     *checkpoint.Manager
+	toolRegistry    *tools.ToolRegistry
 	hooks           *hooks.Runner
 	debugOverlay    components.DebugOverlay
 	debugMode       bool
@@ -95,6 +96,7 @@ func NewApp(
 		turboModal:      components.NewTurboModal(t),
 		permRequestCh:   make(chan modes.PermissionRequest, 10),
 		checkpoints:     checkpoint.NewManager(20),
+		toolRegistry:    toolRegistry,
 		hooks:           hookRunner,
 		debugOverlay:    components.NewDebugOverlay(t),
 	}
@@ -342,11 +344,20 @@ func (a *App) cycleModel() {
 }
 
 func (a *App) handleSubmit(text string) tea.Cmd {
+	modeCfg := modes.Modes[a.mode]
+
+	var toolDefs []api.Tool
+	if a.toolRegistry != nil {
+		toolDefs = a.toolRegistry.ToolDefinitions(modeCfg.AllowedTools)
+	}
+
 	req := api.CreateResponseRequest{
-		Model: a.model,
-		Input: api.MakeStringInput(text),
+		Model:        a.model,
+		Input:        api.MakeStringInput(text),
+		Instructions: modeCfg.SystemPrompt,
+		Tools:        toolDefs,
 		Reasoning: &api.Reasoning{
-			Effort: "medium",
+			Effort: modeCfg.ReasoningEffort,
 		},
 		Stream: true,
 	}
