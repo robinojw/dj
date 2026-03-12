@@ -116,7 +116,7 @@ func (d *dagState) markCompleted(taskID string) []string {
 
 // skipDependents marks all transitive dependents of failedID as "skipped"
 // and sends UpdateSkipped for each.
-func skipDependents(dag *dagState, failedID string, workers map[string]*Worker, updates chan<- WorkerUpdate) {
+func skipDependents(dag *dagState, failedID string, workers map[string]*Worker, updates chan<- WorkerUpdate) int {
 	dag.mu.Lock()
 
 	visited := make(map[string]bool)
@@ -151,4 +151,5 @@ func skipDependents(dag *dagState, failedID string, workers map[string]*Worker, 
 	for _, u := range pending {
 		updates <- u
 	}
+	return len(pending)
 }

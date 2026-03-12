@@ -96,15 +96,8 @@ func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 
 				w := o.Workers[id]
 				if w != nil && w.Status == "error" {
-					skipDependents(dag, id, o.Workers, o.UpdatesCh)
-					// Count skipped workers
-					o.mu.RLock()
-					for _, sw := range o.Workers {
-						if sw.Status == "skipped" {
-							remaining--
-						}
-					}
-					o.mu.RUnlock()
+					skipped := skipDependents(dag, id, o.Workers, o.UpdatesCh)
+					remaining -= skipped
 					continue
 				}
 
