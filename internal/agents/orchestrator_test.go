@@ -100,8 +100,11 @@ func TestSkipDependents(t *testing.T) {
 	}
 
 	updates := make(chan WorkerUpdate, 10)
-	skipDependents(dag, "a", workers, updates)
+	skipped := skipDependents(dag, "a", workers, updates)
 
+	if skipped != 2 {
+		t.Errorf("skipDependents returned %d, want 2", skipped)
+	}
 	if workers["b"].Status != "skipped" {
 		t.Errorf("b status = %q, want skipped", workers["b"].Status)
 	}
@@ -125,8 +128,11 @@ func TestSkipDependents_PartialDAG(t *testing.T) {
 	}
 
 	updates := make(chan WorkerUpdate, 10)
-	skipDependents(dag, "a", workers, updates)
+	skipped := skipDependents(dag, "a", workers, updates)
 
+	if skipped != 1 {
+		t.Errorf("skipDependents returned %d, want 1", skipped)
+	}
 	if workers["b"].Status != "skipped" {
 		t.Errorf("b status = %q, want skipped", workers["b"].Status)
 	}
