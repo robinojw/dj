@@ -69,6 +69,7 @@ func NewApp(
 	model string,
 	cfg config.Config,
 	toolRegistry *tools.ToolRegistry,
+	hookRunner *hooks.Runner,
 ) App {
 	gate := modes.NewGateWithRegistry(
 		modes.ModeConfirm,
@@ -94,6 +95,7 @@ func NewApp(
 		turboModal:      components.NewTurboModal(t),
 		permRequestCh:   make(chan modes.PermissionRequest, 10),
 		checkpoints:     checkpoint.NewManager(20),
+		hooks:           hookRunner,
 		debugOverlay:    components.NewDebugOverlay(t),
 	}
 	app.chat.SetModel(model)
@@ -220,6 +222,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.pushScreen(ScreenTeam)
 
 	case agents.WorkerUpdate:
+		// Log hook results to debug overlay
+		if msg.Type == agents.UpdateHookResult && msg.HookResult != nil {
+			if a.debugMode {
+				info := fmt.Sprintf("Hook %s: exit=%d stdout=%q",
+					msg.HookResult.Event, msg.HookResult.ExitCode, msg.HookResult.Stdout)
+				a.debugOverlay.AddInfo(info)
+			}
+			return a, nil
+		}
+
 		// Convert UpdateDiffResult to StreamDiffMsg for the UI
 		if msg.Type == agents.UpdateDiffResult && msg.DiffInfo != nil {
 			return a, func() tea.Msg {
