@@ -122,6 +122,7 @@ func NewRootApp(
 	a.enhanceView = NewEnhanceScreen(t, a.popScreenFn, nil)
 	a.mcpView = NewMCPManager(t, a.popScreenFn, nil)
 	a.skillsView = NewSkillBrowser(t, a.popScreenFn)
+	a.diffPagerView = NewDiffPager(t, nil, a.popScreenFn)
 	a.permModal = NewPermissionModal(t)
 	a.turboModal = NewTurboModal(t, a.handleTurboResult)
 	a.debugOverlay = NewDebugOverlay(t)
