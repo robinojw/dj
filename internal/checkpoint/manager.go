@@ -9,10 +9,10 @@ import (
 // Checkpoint records the state of files before a destructive action.
 type Checkpoint struct {
 	ID            string
-	ResponseID    string            // Responses API previous_response_id
+	ResponseID    string
 	Timestamp     time.Time
-	FileSnapshots map[string][]byte // path → content before mutation (nil = didn't exist)
-	Description   string            // e.g. "Before: write auth/handler.go"
+	FileSnapshots map[string][]byte
+	Description   string
 }
 
 // Manager maintains a bounded stack of checkpoints.
@@ -38,7 +38,7 @@ func (m *Manager) Before(files []string, responseID, description string) (Checkp
 	for _, f := range files {
 		content, err := os.ReadFile(f)
 		if os.IsNotExist(err) {
-			snap[f] = nil // file didn't exist — restore will delete it
+			snap[f] = nil
 		} else if err != nil {
 			return Checkpoint{}, fmt.Errorf("snapshot %s: %w", f, err)
 		} else {
@@ -62,7 +62,6 @@ func (m *Manager) Before(files []string, responseID, description string) (Checkp
 func (m *Manager) Restore(cp Checkpoint) error {
 	for path, content := range cp.FileSnapshots {
 		if content == nil {
-			// File didn't exist before — remove it
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("remove %s: %w", path, err)
 			}

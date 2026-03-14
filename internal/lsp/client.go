@@ -25,7 +25,7 @@ type Client struct {
 	mu       sync.Mutex
 	nextID   atomic.Int64
 	diagMu   sync.Mutex
-	diags    map[string][]Diagnostic // file → diagnostics
+	diags    map[string][]Diagnostic
 }
 
 // NewClient creates a new LSP client but does not start the server.
@@ -58,7 +58,6 @@ func (c *Client) Start(ctx context.Context) error {
 		return fmt.Errorf("start LSP server %s: %w", c.config.Command, err)
 	}
 
-	// Send initialize request
 	return c.initialize(ctx)
 }
 
@@ -78,7 +77,6 @@ func (c *Client) initialize(_ context.Context) error {
 		return fmt.Errorf("LSP initialize: %w", err)
 	}
 
-	// Send initialized notification
 	return c.notify("initialized", struct{}{})
 }
 
@@ -86,7 +84,6 @@ func (c *Client) initialize(_ context.Context) error {
 func (c *Client) NotifyChange(file string, content string) ([]Diagnostic, error) {
 	uri := "file://" + file
 
-	// Send didOpen (simplified — full impl tracks open files)
 	params := map[string]interface{}{
 		"textDocument": map[string]interface{}{
 			"uri":        uri,
@@ -99,7 +96,6 @@ func (c *Client) NotifyChange(file string, content string) ([]Diagnostic, error)
 		return nil, err
 	}
 
-	// Collect diagnostics that arrive within timeout
 	return c.collectDiagnostics(file, diagnosticCollectTimeout), nil
 }
 
@@ -146,8 +142,6 @@ func FormatDiagnostics(diags []Diagnostic) string {
 	return strings.Join(lines, "\n")
 }
 
-// --- JSON-RPC 2.0 transport (LSP uses Content-Length framing) ---
-
 func (c *Client) call(method string, params interface{}, result interface{}) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -192,7 +186,6 @@ func (c *Client) writeMessage(msg interface{}) error {
 }
 
 func (c *Client) readResponse(result interface{}) error {
-	// Read Content-Length header
 	var contentLength int
 	for {
 		line, err := c.stdout.ReadString('\n')
@@ -201,7 +194,7 @@ func (c *Client) readResponse(result interface{}) error {
 		}
 		line = strings.TrimSpace(line)
 		if line == "" {
-			break // empty line = end of headers
+			break
 		}
 		if strings.HasPrefix(line, "Content-Length:") {
 			fmt.Sscanf(line, "Content-Length: %d", &contentLength)

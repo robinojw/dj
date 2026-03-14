@@ -59,7 +59,6 @@ func ReadFileHandler(workspaceRoot string) ToolHandler {
 
 		selected := lines[offset:end]
 
-		// Format with line numbers
 		var sb strings.Builder
 		for i, line := range selected {
 			fmt.Fprintf(&sb, "%d\t%s\n", offset+i+1, line)
@@ -72,7 +71,6 @@ func ReadFileHandler(workspaceRoot string) ToolHandler {
 // Resolves symlinks to prevent symlink-based escapes from the workspace.
 func safePath(root, filePath string) (string, error) {
 	rootCleaned := filepath.Clean(root)
-	// Resolve symlinks in the root so all comparisons use canonical paths.
 	if resolved, err := filepath.EvalSymlinks(rootCleaned); err == nil {
 		rootCleaned = resolved
 	}
@@ -84,8 +82,6 @@ func safePath(root, filePath string) (string, error) {
 		abs = filepath.Clean(filepath.Join(rootCleaned, filePath))
 	}
 
-	// Resolve symlinks in the target path if it exists.
-	// For new files, resolve the parent directory to catch symlinked parents.
 	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
 		abs = resolved
 	} else if resolved, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {

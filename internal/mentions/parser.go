@@ -19,8 +19,8 @@ const (
 // Mention represents a parsed @mention from user input.
 type Mention struct {
 	Type     MentionType
-	Value    string // the parsed value (path, URL, symbol name, ref, test name)
-	Raw      string // the full raw text matched including @
+	Value    string
+	Raw      string
 	StartIdx int
 	EndIdx   int
 }
@@ -45,7 +45,6 @@ var parsers = []parser{
 	{prefix: "@test:", typ: MentionTest, extract: func(s string) string { return s }},
 	{prefix: "@https://", typ: MentionURL, extract: func(s string) string { return "https://" + s }},
 	{prefix: "@http://", typ: MentionURL, extract: func(s string) string { return "http://" + s }},
-	// File mention is the fallback — any @ followed by a path-like string
 }
 
 // mentionRegex matches @-prefixed tokens, avoiding email addresses.
@@ -58,7 +57,6 @@ func Parse(input string) []Mention {
 
 	matches := mentionRegex.FindAllStringSubmatchIndex(input, -1)
 	for _, match := range matches {
-		// match[2] and match[3] are the submatch (group 1) indices
 		raw := input[match[2]:match[3]]
 
 		m := classify(raw)
@@ -79,7 +77,6 @@ func StripMentions(input string) string {
 		return input
 	}
 
-	// Remove from right to left to preserve indices
 	result := input
 	for i := len(mentions) - 1; i >= 0; i-- {
 		m := mentions[i]
@@ -89,12 +86,10 @@ func StripMentions(input string) string {
 }
 
 func classify(raw string) *Mention {
-	// Strip leading @
 	body := raw[1:]
 
-	// Try typed prefixes first
 	for _, p := range parsers {
-		prefix := p.prefix[1:] // strip the @ since we already removed it
+		prefix := p.prefix[1:]
 		if strings.HasPrefix(body, prefix) {
 			value := body[len(prefix):]
 			return &Mention{
@@ -105,7 +100,6 @@ func classify(raw string) *Mention {
 		}
 	}
 
-	// Fallback: file mention if it looks like a path
 	if isPathLike(body) {
 		return &Mention{
 			Type:  MentionFile,
@@ -118,6 +112,5 @@ func classify(raw string) *Mention {
 }
 
 func isPathLike(s string) bool {
-	// Must contain a / or a file extension to be a path
 	return strings.Contains(s, "/") || strings.Contains(s, ".")
 }

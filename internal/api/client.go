@@ -12,6 +12,8 @@ import (
 )
 
 const defaultBaseURL = "https://api.openai.com"
+const responsesPath = "/v1/responses"
+const sseBufferSize = 1024 * 1024
 
 // ResponsesClient streams responses from the OpenAI Responses API.
 type ResponsesClient struct {
@@ -55,7 +57,7 @@ func (c *ResponsesClient) Stream(
 
 		httpReq, err := http.NewRequestWithContext(
 			ctx, http.MethodPost,
-			c.baseURL+"/v1/responses",
+			c.baseURL+responsesPath,
 			bytes.NewReader(body),
 		)
 		if err != nil {
@@ -98,7 +100,7 @@ func (c *ResponsesClient) Send(
 
 	httpReq, err := http.NewRequestWithContext(
 		ctx, http.MethodPost,
-		c.baseURL+"/v1/responses",
+		c.baseURL+responsesPath,
 		bytes.NewReader(body),
 	)
 	if err != nil {
@@ -133,8 +135,7 @@ func (c *ResponsesClient) parseSSE(
 	errs chan<- error,
 ) {
 	scanner := bufio.NewScanner(body)
-	// Increase buffer for large SSE events
-	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, sseBufferSize), sseBufferSize)
 
 	for scanner.Scan() {
 		select {
@@ -145,7 +146,6 @@ func (c *ResponsesClient) parseSSE(
 
 		line := scanner.Text()
 
-		// SSE format: "data: {...}" or "data: [DONE]"
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
@@ -157,7 +157,7 @@ func (c *ResponsesClient) parseSSE(
 
 		var event sseEvent
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			continue // skip malformed events
+			continue
 		}
 
 		chunk := c.eventToChunk(event)

@@ -4,6 +4,8 @@ import (
 	"sync"
 )
 
+const tokensPerUnit = 1_000_000
+
 // Model pricing per 1M tokens (USD).
 var modelPricing = map[string][2]float64{
 	"o3-pro":             {20.00, 80.00},
@@ -39,8 +41,8 @@ func (t *Tracker) Record(usage Usage) {
 	if !ok {
 		pricing = [2]float64{2.00, 8.00} // fallback
 	}
-	t.cost += float64(usage.InputTokens) / 1_000_000 * pricing[0]
-	t.cost += float64(usage.OutputTokens) / 1_000_000 * pricing[1]
+	t.cost += float64(usage.InputTokens) / tokensPerUnit * pricing[0]
+	t.cost += float64(usage.OutputTokens) / tokensPerUnit * pricing[1]
 }
 
 func (t *Tracker) InputTokens() int {

@@ -68,3 +68,38 @@ Project config: `harness.toml` (TOML). Sections: `[model]`, `[theme]`, `[executi
 ## Dependencies
 
 Core: Bubble Tea (TUI), Lipgloss (styling), Bubbles (UI components), BurntSushi/toml, go-humanize, yaml.v3. LSP via go.lsp.dev packages. No external test frameworks — standard `testing` package only.
+
+## Code Style
+
+### 1. No shortened variable names
+Use descriptive names. `err` not `e`, `registry` not `r`, `skill` not `s`. Single-letter loop counters (`i`, `j`, `k`) and standard Go receivers are acceptable.
+
+### 2. No nested if statements
+Use early returns and guard clauses. Extract nested logic into helper functions.
+
+### 3. No complex boolean conditions inline
+Assign compound conditions to a descriptively named variable before using in an if statement.
+
+```go
+// Bad
+if w.Status != "completed" && w.Status != "error" && w.Status != "skipped" {
+
+// Good
+isStillRunning := w.Status != "completed" && w.Status != "error" && w.Status != "skipped"
+if isStillRunning {
+```
+
+### 4. No inline comments
+Write readable code instead of commenting it. Only use godoc comments on exported types and complex functions where absolutely necessary.
+
+### 5. Intentional directory and file naming
+Structure directories and filenames so they are easy to search and grep through.
+
+### 6. No repeated raw strings
+Assign repeated string literals to named constants so they can be reused and found in one place.
+
+### 7. Named constants for magic numbers
+Extract numeric literals (buffer sizes, timeouts, weights, permissions) into named constants with descriptive names.
+
+### 8. Use fmt.Errorf for errors
+Always use `fmt.Errorf("context: %w", err)` for error wrapping. Never use `fmt.Sprintf("Error: %v", err)`.
