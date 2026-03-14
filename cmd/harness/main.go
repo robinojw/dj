@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	gotui "github.com/grindlemire/go-tui"
 	"github.com/robinojw/dj/config"
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/hooks"
@@ -16,7 +16,7 @@ import (
 	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/skills"
 	"github.com/robinojw/dj/internal/tools"
-	"github.com/robinojw/dj/internal/tui"
+	tuipkg "github.com/robinojw/dj/internal/tui"
 	"github.com/robinojw/dj/internal/tui/theme"
 )
 
@@ -116,14 +116,19 @@ func main() {
 	cwd, _ := os.Getwd()
 	toolRegistry := tools.NewDefaultRegistry(cwd)
 
-	app := tui.NewApp(t, client, tracker, cfg.Model.Default, cfg, toolRegistry, hookRunner)
+	rootComponent := tuipkg.NewRootApp(t, client, tracker, cfg.Model.Default, cfg, toolRegistry, hookRunner)
 
-	p := tea.NewProgram(app,
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
+	gotuiApp, err := gotui.NewApp(
+		gotui.WithInlineHeight(3),
+		gotui.WithRootComponent(rootComponent),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating TUI: %v\n", err)
+		os.Exit(1)
+	}
+	defer gotuiApp.Close()
 
-	if _, err := p.Run(); err != nil {
+	if err := gotuiApp.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
