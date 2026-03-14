@@ -44,75 +44,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Load theme
 	t := loadTheme(cfg.Theme.Name)
-
-	// Create API client and tracker
 	client := api.NewResponsesClient(apiKey)
 	tracker := api.NewTracker(cfg.Model.Default)
 
-	// Load skills
-	skillPaths := cfg.Skills.Paths
-	// Append built-in skills path
-	if exe, err := os.Executable(); err == nil {
-		skillPaths = append(skillPaths, filepath.Join(filepath.Dir(exe), "..", "skills"))
-	}
-	skillPaths = append(skillPaths, "skills") // local skills directory
-	skillRegistry := skills.NewRegistry(skillPaths)
-	if err := skillRegistry.Load(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to load skills: %v\n", err)
-	}
+	_ = initSkills(cfg)
 
-	// Set up MCP servers
-	mcpConfigs := buildMCPConfigs(cfg)
-	mcpRegistry := mcp.NewRegistry(mcpConfigs)
 	ctx := context.Background()
-	if err := mcpRegistry.Start(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: MCP startup error: %v\n", err)
-	}
+	mcpRegistry := initMCP(ctx, cfg)
 	defer mcpRegistry.StopAll()
 
-	// Auto-detect and start LSP server
-	var lspClient *lsp.Client
-	if cfg.LSP.Enabled || cfg.LSP.Language == "" {
-		cwd, _ := os.Getwd()
-		if detected := lsp.Detect(cwd); detected != nil {
-			lspClient = lsp.NewClient(detected.Config, detected.RootPath)
-			if err := lspClient.Start(ctx); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: LSP server failed to start: %v\n", err)
-				lspClient = nil
-			} else {
-				defer lspClient.Close()
-			}
-		}
+	lspClient := initLSP(ctx, cfg)
+	if lspClient != nil {
+		defer lspClient.Close()
 	}
-	_ = lspClient // will be wired to app in future steps
+	_ = lspClient
 
-	// Set up memory manager
 	memMgr := memory.DefaultManager()
-	_ = memMgr // will be wired to app in future steps
+	_ = memMgr
 
-	// Set up event hooks
-	var hookTimeout time.Duration
-	if cfg.Hooks.Timeout != "" {
-		if parsed, err := time.ParseDuration(cfg.Hooks.Timeout); err == nil {
-			hookTimeout = parsed
-		} else {
-			fmt.Fprintf(os.Stderr, "Warning: invalid hooks timeout %q: %v\n", cfg.Hooks.Timeout, err)
-		}
-	}
-	hookRunner := hooks.NewRunner(hooks.Config{
-		Hooks: map[string]string{
-			string(hooks.HookPreToolCall):  cfg.Hooks.PreToolCall,
-			string(hooks.HookPostToolCall): cfg.Hooks.PostToolCall,
-			string(hooks.HookOnError):      cfg.Hooks.OnError,
-			string(hooks.HookSessionEnd):   cfg.Hooks.OnSessionEnd,
-		},
-		Timeout: hookTimeout,
-	})
+	hookRunner := initHooks(cfg)
 	defer hookRunner.FireAsync(hooks.HookSessionEnd, map[string]string{"summary": "session ended"})
 
-	// Create tool registry
 	cwd, _ := os.Getwd()
 	toolRegistry := tools.NewDefaultRegistry(cwd)
 
@@ -132,6 +85,65 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func initMCP(ctx context.Context, cfg config.Config) *mcp.Registry {
+	mcpConfigs := buildMCPConfigs(cfg)
+	mcpRegistry := mcp.NewRegistry(mcpConfigs)
+	if err := mcpRegistry.Start(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: MCP startup error: %v\n", err)
+	}
+	return mcpRegistry
+}
+
+func initSkills(cfg config.Config) *skills.Registry {
+	skillPaths := cfg.Skills.Paths
+	if exe, err := os.Executable(); err == nil {
+		skillPaths = append(skillPaths, filepath.Join(filepath.Dir(exe), "..", "skills"))
+	}
+	skillPaths = append(skillPaths, "skills")
+	reg := skills.NewRegistry(skillPaths)
+	if err := reg.Load(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load skills: %v\n", err)
+	}
+	return reg
+}
+
+func initLSP(ctx context.Context, cfg config.Config) *lsp.Client {
+	if !cfg.LSP.Enabled && cfg.LSP.Language != "" {
+		return nil
+	}
+	cwd, _ := os.Getwd()
+	detected := lsp.Detect(cwd)
+	if detected == nil {
+		return nil
+	}
+	client := lsp.NewClient(detected.Config, detected.RootPath)
+	if err := client.Start(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: LSP server failed to start: %v\n", err)
+		return nil
+	}
+	return client
+}
+
+func initHooks(cfg config.Config) *hooks.Runner {
+	var hookTimeout time.Duration
+	if cfg.Hooks.Timeout != "" {
+		if parsed, err := time.ParseDuration(cfg.Hooks.Timeout); err == nil {
+			hookTimeout = parsed
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: invalid hooks timeout %q: %v\n", cfg.Hooks.Timeout, err)
+		}
+	}
+	return hooks.NewRunner(hooks.Config{
+		Hooks: map[string]string{
+			string(hooks.HookPreToolCall):  cfg.Hooks.PreToolCall,
+			string(hooks.HookPostToolCall): cfg.Hooks.PostToolCall,
+			string(hooks.HookOnError):      cfg.Hooks.OnError,
+			string(hooks.HookSessionEnd):   cfg.Hooks.OnSessionEnd,
+		},
+		Timeout: hookTimeout,
+	})
 }
 
 func shortCommit(s string) string {

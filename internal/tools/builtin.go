@@ -49,10 +49,17 @@ func NewDefaultRegistry(workspaceRoot string) *ToolRegistry {
 	return r
 }
 
-func registerBuiltinSchemas(r *ToolRegistry) {
-	r.RegisterSchema("read_file", ToolSchema{
-		Description: "Read a file's contents with line numbers. Returns numbered lines from the file within the workspace.",
-		Parameters: json.RawMessage(`{
+type builtinSchema struct {
+	name        string
+	description string
+	parameters  string
+}
+
+var builtinSchemas = []builtinSchema{
+	{
+		name:        "read_file",
+		description: "Read a file's contents with line numbers. Returns numbered lines from the file within the workspace.",
+		parameters: `{
 			"type": "object",
 			"properties": {
 				"file_path": {"type": "string", "description": "Path to the file (relative to workspace root or absolute)"},
@@ -61,12 +68,12 @@ func registerBuiltinSchemas(r *ToolRegistry) {
 			},
 			"required": ["file_path"],
 			"additionalProperties": false
-		}`),
-	})
-
-	r.RegisterSchema("write_file", ToolSchema{
-		Description: "Write content to a file, creating parent directories if needed. Backs up existing files before overwriting.",
-		Parameters: json.RawMessage(`{
+		}`,
+	},
+	{
+		name:        "write_file",
+		description: "Write content to a file, creating parent directories if needed. Backs up existing files before overwriting.",
+		parameters: `{
 			"type": "object",
 			"properties": {
 				"file_path": {"type": "string", "description": "Path to the file (relative to workspace root or absolute)"},
@@ -74,12 +81,12 @@ func registerBuiltinSchemas(r *ToolRegistry) {
 			},
 			"required": ["file_path", "content"],
 			"additionalProperties": false
-		}`),
-	})
-
-	r.RegisterSchema("edit_file", ToolSchema{
-		Description: "Edit a file by replacing an exact string match. Supports whitespace-tolerant matching if exact match fails.",
-		Parameters: json.RawMessage(`{
+		}`,
+	},
+	{
+		name:        "edit_file",
+		description: "Edit a file by replacing an exact string match. Supports whitespace-tolerant matching if exact match fails.",
+		parameters: `{
 			"type": "object",
 			"properties": {
 				"file_path":  {"type": "string", "description": "Path to the file to edit"},
@@ -88,12 +95,12 @@ func registerBuiltinSchemas(r *ToolRegistry) {
 			},
 			"required": ["file_path", "old_string"],
 			"additionalProperties": false
-		}`),
-	})
-
-	r.RegisterSchema("str_replace", ToolSchema{
-		Description: "Replace a string in a file (alias for edit_file). Finds old_string and replaces with new_string.",
-		Parameters: json.RawMessage(`{
+		}`,
+	},
+	{
+		name:        "str_replace",
+		description: "Replace a string in a file (alias for edit_file). Finds old_string and replaces with new_string.",
+		parameters: `{
 			"type": "object",
 			"properties": {
 				"file_path":  {"type": "string", "description": "Path to the file to edit"},
@@ -102,41 +109,50 @@ func registerBuiltinSchemas(r *ToolRegistry) {
 			},
 			"required": ["file_path", "old_string"],
 			"additionalProperties": false
-		}`),
-	})
-
-	r.RegisterSchema("delete_file", ToolSchema{
-		Description: "Delete a file from the workspace. Cannot delete directories.",
-		Parameters: json.RawMessage(`{
+		}`,
+	},
+	{
+		name:        "delete_file",
+		description: "Delete a file from the workspace. Cannot delete directories.",
+		parameters: `{
 			"type": "object",
 			"properties": {
 				"file_path": {"type": "string", "description": "Path to the file to delete"}
 			},
 			"required": ["file_path"],
 			"additionalProperties": false
-		}`),
-	})
-
-	r.RegisterSchema("list_dir", ToolSchema{
-		Description: "List files and directories at a given path. Shows file sizes and directory indicators.",
-		Parameters: json.RawMessage(`{
+		}`,
+	},
+	{
+		name:        "list_dir",
+		description: "List files and directories at a given path. Shows file sizes and directory indicators.",
+		parameters: `{
 			"type": "object",
 			"properties": {
 				"path": {"type": "string", "description": "Directory path to list (relative to workspace root). Defaults to workspace root."}
 			},
 			"additionalProperties": false
-		}`),
-	})
-
-	r.RegisterSchema("run_tests", ToolSchema{
-		Description: "Run Go tests and return structured results with pass/fail status and output.",
-		Parameters: json.RawMessage(`{
+		}`,
+	},
+	{
+		name:        "run_tests",
+		description: "Run Go tests and return structured results with pass/fail status and output.",
+		parameters: `{
 			"type": "object",
 			"properties": {
 				"package": {"type": "string", "description": "Go package pattern to test. Defaults to './...' (all packages)."},
 				"run":     {"type": "string", "description": "Regex filter for test names (passed as -run flag)."}
 			},
 			"additionalProperties": false
-		}`),
-	})
+		}`,
+	},
+}
+
+func registerBuiltinSchemas(r *ToolRegistry) {
+	for _, s := range builtinSchemas {
+		r.RegisterSchema(s.name, ToolSchema{
+			Description: s.description,
+			Parameters:  json.RawMessage(s.parameters),
+		})
+	}
 }

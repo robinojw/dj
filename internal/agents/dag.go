@@ -14,34 +14,21 @@ type dagState struct {
 	mu         sync.Mutex
 }
 
-// buildDAG validates the dependency graph and returns the scheduling state.
-// Returns an error if a cycle is detected or a dependency references a missing task.
-func buildDAG(subtasks []Subtask) (*dagState, error) {
-	ids := make(map[string]bool, len(subtasks))
-	for _, t := range subtasks {
-		ids[t.ID] = true
-	}
-
-	// Check for missing dependencies
+// validateDependencies checks that all dependency references point to existing tasks.
+func validateDependencies(subtasks []Subtask, ids map[string]bool) error {
 	for _, t := range subtasks {
 		for _, dep := range t.DependsOn {
 			if !ids[dep] {
-				return nil, fmt.Errorf("task %q depends on unknown task %q", t.ID, dep)
+				return fmt.Errorf("task %q depends on unknown task %q", t.ID, dep)
 			}
 		}
 	}
+	return nil
+}
 
-	inDegree := make(map[string]int, len(subtasks))
-	dependents := make(map[string][]string, len(subtasks))
-
-	for _, t := range subtasks {
-		inDegree[t.ID] = len(t.DependsOn)
-		for _, dep := range t.DependsOn {
-			dependents[dep] = append(dependents[dep], t.ID)
-		}
-	}
-
-	// Kahn's algorithm for cycle detection
+// detectCycle uses Kahn's algorithm to detect cycles in the dependency graph.
+// Returns an error listing the cycle participants if one is found.
+func detectCycle(subtasks []Subtask, inDegree map[string]int, dependents map[string][]string) error {
 	queue := make([]string, 0)
 	for _, t := range subtasks {
 		if inDegree[t.ID] == 0 {
@@ -49,12 +36,12 @@ func buildDAG(subtasks []Subtask) (*dagState, error) {
 		}
 	}
 
-	visited := 0
 	tempInDegree := make(map[string]int, len(inDegree))
 	for k, v := range inDegree {
 		tempInDegree[k] = v
 	}
 
+	visited := 0
 	for len(queue) > 0 {
 		node := queue[0]
 		queue = queue[1:]
@@ -75,13 +62,37 @@ func buildDAG(subtasks []Subtask) (*dagState, error) {
 			}
 		}
 		sort.Strings(cycleNodes)
-		return nil, fmt.Errorf("dependency cycle detected among tasks: [%s]", strings.Join(cycleNodes, ", "))
+		return fmt.Errorf("dependency cycle detected among tasks: [%s]", strings.Join(cycleNodes, ", "))
+	}
+	return nil
+}
+
+// buildDAG validates the dependency graph and returns the scheduling state.
+// Returns an error if a cycle is detected or a dependency references a missing task.
+func buildDAG(subtasks []Subtask) (*dagState, error) {
+	ids := make(map[string]bool, len(subtasks))
+	for _, t := range subtasks {
+		ids[t.ID] = true
 	}
 
-	return &dagState{
-		inDegree:   inDegree,
-		dependents: dependents,
-	}, nil
+	if err := validateDependencies(subtasks, ids); err != nil {
+		return nil, err
+	}
+
+	inDegree := make(map[string]int, len(subtasks))
+	dependents := make(map[string][]string, len(subtasks))
+	for _, t := range subtasks {
+		inDegree[t.ID] = len(t.DependsOn)
+		for _, dep := range t.DependsOn {
+			dependents[dep] = append(dependents[dep], t.ID)
+		}
+	}
+
+	if err := detectCycle(subtasks, inDegree, dependents); err != nil {
+		return nil, err
+	}
+
+	return &dagState{inDegree: inDegree, dependents: dependents}, nil
 }
 
 // readySet returns all task IDs with zero in-degree (ready to run).

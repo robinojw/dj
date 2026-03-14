@@ -1,0 +1,32 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - funlen
+    - cyclop
+
+  settings:
+    funlen:
+      lines: 60
+      statements: -1
+    cyclop:
+      max-complexity: 15
+    staticcheck:
+      checks:
+        - "all"
+        - "-QF*"
+        - "-ST1000"
+
+  exclusions:
+    rules:
+      - path: '(.+)_test\.go'
+        linters:
+          - funlen
+          - cyclop
+      - path: '(.+)_gsx\.go'
+        linters:
+          - funlen
+          - cyclop
