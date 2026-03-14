@@ -18,6 +18,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install go-tui CLI
+        run: go install github.com/grindlemire/go-tui/cmd/tui@latest
+
+      - name: Check generated GSX files are up to date
+        run: |
+          tui generate ./internal/tui/...
+          git diff --exit-code -- '*.go' || (echo "Generated GSX files are out of date. Run 'tui generate ./internal/tui/...' and commit." && exit 1)
+
       - name: Build
         run: go build ./...
 
