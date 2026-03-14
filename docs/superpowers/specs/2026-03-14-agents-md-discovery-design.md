@@ -7,7 +7,7 @@ Add support for discovering and loading `AGENTS.md` files from anywhere in the r
 ## Requirements
 
 - At app startup, find all `agents.md` files in the repository (case-insensitive)
-- Discovery uses `find . -iname "agents.md"` via shell execution
+- Discovery uses `find . -iname "agents.md" -not -path "./.git/*"` via shell execution
 - Files are ordered depth-first from root, then alphabetically within the same depth
 - All discovered files are always loaded and injected as context
 - Falls back to `["AGENTS.md"]` if the shell command fails
@@ -18,8 +18,8 @@ Add support for discovering and loading `AGENTS.md` files from anywhere in the r
 
 At startup, before creating the memory manager:
 
-1. Run `find . -iname "agents.md"` via `exec.Command` from the working directory
-2. Parse stdout lines into a `[]string` of relative paths
+1. Run `find . -iname "agents.md" -not -path "./.git/*"` via `exec.Command` from the working directory
+2. Parse stdout lines into a `[]string` of relative paths, normalizing any `./` prefix
 3. Sort by depth (count of `/` separators), then alphabetically within same depth
 4. Pass the sorted slice to `memory.NewManager(paths, userPath)`
 
@@ -56,12 +56,17 @@ type Manager struct {
 
 Files that don't exist or are empty are silently skipped. `ProjectPath()` becomes `ProjectPaths() []string`.
 
-### Wiring
+### Chat Screen Wiring (`internal/tui/app.go`)
 
-The memory manager is wired into:
+The `App` struct currently has no `memory` field. Changes needed:
 
-- **Worker pipeline** (multi-agent mode) — the `w.memory` field already exists
-- **Chat screen** (single-agent mode) — currently uses only `modeCfg.SystemPrompt` for instructions; will append memory context
+1. Add `memory *memory.Manager` field to `App`
+2. Update `NewApp` to accept a `*memory.Manager` parameter
+3. In `handleSubmit`, change `Instructions` from `modeCfg.SystemPrompt` to `modeCfg.SystemPrompt + "\n\n" + a.memory.LoadContext()`
+
+### Worker Pipeline Wiring
+
+The `Worker` already has a `memory` field and `buildInstructions()` calls `w.memory.LoadContext()`. The `Orchestrator` has an exported `Memory` field that must be set after construction in `main.go` to pass the manager through to workers.
 
 No configuration file changes needed. Discovery is automatic.
 
@@ -69,12 +74,15 @@ No configuration file changes needed. Discovery is automatic.
 
 | File | Change |
 |------|--------|
-| `cmd/harness/main.go` | Add discovery logic, update `NewManager` call, wire to chat screen |
+| `cmd/harness/main.go` | Add discovery logic, update `NewManager` call, pass manager to `NewApp` and orchestrator |
 | `internal/memory/manager.go` | `projectPath string` -> `projectPaths []string`, update `LoadContext()`, update constructors |
-| `internal/memory/manager_test.go` | Update tests for new multi-path behavior (if exists) |
+| `internal/memory/manager_test.go` | Update tests for new multi-path constructor signature |
+| `internal/tui/app.go` | Add `memory` field to `App`, update `NewApp` signature, use memory context in `handleSubmit` |
 
 ## Out of Scope
 
 - Configurable filename patterns (hardcoded to `agents.md`)
 - Mid-session refresh (load once at startup only)
 - Caching or file watching
+- Symlink following (avoids cycle risk)
+- Size limits on discovered files
