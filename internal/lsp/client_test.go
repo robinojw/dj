@@ -7,9 +7,12 @@ import (
 )
 
 func TestDetectGo(t *testing.T) {
-	// Create a temp dir with a go.mod file
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test"), 0644)
+
+	binDir := t.TempDir()
+	os.WriteFile(filepath.Join(binDir, "gopls"), []byte("#!/bin/sh\n"), 0755)
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
 
 	result := Detect(dir)
 	if result == nil {
@@ -20,6 +23,18 @@ func TestDetectGo(t *testing.T) {
 	}
 	if result.Config.Command != "gopls" {
 		t.Errorf("Expected command 'gopls', got %s", result.Config.Command)
+	}
+}
+
+func TestDetectSkipsWhenCommandMissing(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test"), 0644)
+
+	t.Setenv("PATH", t.TempDir())
+
+	result := Detect(dir)
+	if result != nil {
+		t.Error("Expected nil when LSP server command is not on PATH")
 	}
 }
 

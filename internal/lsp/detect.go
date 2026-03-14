@@ -1,6 +1,9 @@
 package lsp
 
-import "os"
+import (
+	"os"
+	"os/exec"
+)
 
 // knownServers maps language indicators to LSP server commands.
 var knownServers = map[string]ServerConfig{
@@ -35,9 +38,19 @@ var knownServers = map[string]ServerConfig{
 // and returns the first matching LSP server config.
 func Detect(root string) *DetectedServer {
 	for marker, cfg := range knownServers {
-		if _, err := os.Stat(root + "/" + marker); err == nil {
-			return &DetectedServer{Config: cfg, RootPath: root}
+		markerExists := fileExists(root + "/" + marker)
+		if !markerExists {
+			continue
 		}
+		if _, err := exec.LookPath(cfg.Command); err != nil {
+			continue
+		}
+		return &DetectedServer{Config: cfg, RootPath: root}
 	}
 	return nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
