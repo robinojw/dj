@@ -147,6 +147,47 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 	w.Status = "completed"
 }
 
+// handleFunctionCallAdded processes a new function call item from the stream.
+func (w *Worker) handleFunctionCallAdded(item *api.OutputItem, updates chan<- WorkerUpdate) {
+	w.lastToolName = item.Name
+	if item.Arguments != "" {
+		_ = json.Unmarshal([]byte(item.Arguments), &w.lastToolArgs)
+	}
+
+	argsJSON, _ := json.Marshal(w.lastToolArgs)
+	w.fireHook(hooks.HookPreToolCall, map[string]string{
+		"tool_name": item.Name,
+		"tool_args": string(argsJSON),
+		"worker_id": w.ID,
+	}, updates)
+
+	updates <- WorkerUpdate{
+		WorkerID: w.ID,
+		Type:     UpdateToolCall,
+		Content:  fmt.Sprintf("Calling %s", item.Name),
+	}
+}
+
+// handleStreamChunk processes a single chunk from the SSE stream.
+func (w *Worker) handleStreamChunk(chunk api.ResponseChunk, updates chan<- WorkerUpdate) *api.ResponseObject {
+	switch chunk.Type {
+	case "response.output_text.delta":
+		w.Output += chunk.Delta
+		updates <- WorkerUpdate{WorkerID: w.ID, Type: UpdateDelta, Content: chunk.Delta}
+
+	case "response.output_item.added":
+		if chunk.Item != nil && chunk.Item.Type == "function_call" {
+			w.handleFunctionCallAdded(chunk.Item, updates)
+		}
+
+	case "response.completed":
+		if chunk.Response != nil {
+			return chunk.Response
+		}
+	}
+	return nil
+}
+
 // streamResponse streams a single API response, forwarding text deltas and
 // tool call notifications to the updates channel. Returns the completed
 // response object (nil if the stream ended without one) and any stream error.
@@ -171,44 +212,11 @@ func (w *Worker) streamResponse(
 		default:
 		}
 
-		switch chunk.Type {
-		case "response.output_text.delta":
-			w.Output += chunk.Delta
-			updates <- WorkerUpdate{
-				WorkerID: w.ID,
-				Type:     UpdateDelta,
-				Content:  chunk.Delta,
-			}
-
-		case "response.output_item.added":
-			if chunk.Item != nil && chunk.Item.Type == "function_call" {
-				w.lastToolName = chunk.Item.Name
-				if chunk.Item.Arguments != "" {
-					_ = json.Unmarshal([]byte(chunk.Item.Arguments), &w.lastToolArgs)
-				}
-
-				argsJSON, _ := json.Marshal(w.lastToolArgs)
-				w.fireHook(hooks.HookPreToolCall, map[string]string{
-					"tool_name": chunk.Item.Name,
-					"tool_args": string(argsJSON),
-					"worker_id": w.ID,
-				}, updates)
-
-				updates <- WorkerUpdate{
-					WorkerID: w.ID,
-					Type:     UpdateToolCall,
-					Content:  fmt.Sprintf("Calling %s", chunk.Item.Name),
-				}
-			}
-
-		case "response.completed":
-			if chunk.Response != nil {
-				completedResponse = chunk.Response
-			}
+		if resp := w.handleStreamChunk(chunk, updates); resp != nil {
+			completedResponse = resp
 		}
 	}
 
-	// Check for stream errors
 	for err := range errs {
 		w.fireHook(hooks.HookOnError, map[string]string{
 			"error_msg": err.Error(),
