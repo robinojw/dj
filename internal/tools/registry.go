@@ -149,12 +149,10 @@ func (r *ToolRegistry) ToolDefinitions(allowedTools []string) []api.Tool {
 			continue
 		}
 		tools = append(tools, api.Tool{
-			Type: "function",
-			Function: &api.FunctionTool{
-				Name:        name,
-				Description: schema.Description,
-				Parameters:  schema.Parameters,
-			},
+			Type:        "function",
+			Name:        name,
+			Description: schema.Description,
+			Parameters:  schema.Parameters,
 		})
 	}
 	return tools

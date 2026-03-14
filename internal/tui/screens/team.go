@@ -30,22 +30,14 @@ type AgentStatus struct {
 // TeamModel is the split-pane team orchestration screen.
 type TeamModel struct {
 	agents      map[string]*AgentStatus
-	topology    []Edge
 	selected    string
 	graph       AgentGraphWidget
-	output      AgentOutputWidget
 	statusBar   components.StatusBar
 	graphHeight int
 	outputHeight int
 	width       int
 	height      int
 	theme       *theme.Theme
-}
-
-// Edge represents a parent → child relationship in the agent graph.
-type Edge struct {
-	From string
-	To   string
 }
 
 func NewTeamModel(t *theme.Theme) TeamModel {
@@ -169,21 +161,10 @@ func statusIcon(status string) string {
 
 // --- Agent Graph Widget (embedded) ---
 
-type AgentGraphWidget struct {
-	selected string
-}
+type AgentGraphWidget struct{}
 
 func (g AgentGraphWidget) Update(msg tea.Msg) (AgentGraphWidget, tea.Cmd) {
 	// Navigation will be wired when agents are populated
 	return g, nil
 }
 
-// --- Agent Output Widget (embedded) ---
-
-type AgentOutputWidget struct {
-	content string
-}
-
-func (o AgentOutputWidget) View() string {
-	return o.content
-}

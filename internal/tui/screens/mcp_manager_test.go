@@ -136,7 +136,7 @@ func TestMCPManager_ToggleEmptyList(t *testing.T) {
 	m := NewMCPManagerModel(theme.DefaultTheme())
 
 	// Enter on empty list should not panic and produce no command.
-	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd != nil {
 		t.Error("toggle on empty list should not produce a command")
 	}

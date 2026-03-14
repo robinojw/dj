@@ -352,12 +352,6 @@ func (w *Worker) fireHook(event hooks.HookEvent, vars map[string]string, updates
 	}
 }
 
-// filterToolsForMode returns tools available in the worker's current mode.
-func (w *Worker) filterToolsForMode(allTools []string) []string {
-	modeCfg := Modes[w.Mode]
-	return FilterTools(allTools, modeCfg)
-}
-
 func (w *Worker) buildInstructions() string {
 	modeCfg := Modes[w.Mode]
 	base := modeCfg.SystemPrompt + "\n\n"

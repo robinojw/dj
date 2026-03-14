@@ -18,16 +18,13 @@ type Reasoning struct {
 }
 
 // Tool represents a tool in the Responses API tools array.
+// For function tools, Name/Description/Parameters sit at the top level (not nested).
 type Tool struct {
-	Type     string        `json:"type"`               // "function", "mcp", "file_search"
-	Function *FunctionTool `json:"function,omitempty"`
-	MCP      *MCPTool      `json:"mcp,omitempty"`
-}
-
-type FunctionTool struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Parameters  json.RawMessage `json:"parameters"`
+	Type        string          `json:"type"`                  // "function", "mcp", "file_search"
+	Name        string          `json:"name,omitempty"`        // function tool name
+	Description string          `json:"description,omitempty"` // function tool description
+	Parameters  json.RawMessage `json:"parameters,omitempty"`  // function tool parameters JSON schema
+	MCP         *MCPTool        `json:"mcp,omitempty"`
 }
 
 type MCPTool struct {

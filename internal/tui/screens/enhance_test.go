@@ -66,7 +66,7 @@ func TestEnhanceModel_EnterWhenNotReady(t *testing.T) {
 	m := NewEnhanceModel(theme.DefaultTheme())
 
 	// Enter before result arrives should produce no command.
-	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd != nil {
 		t.Error("Enter when not ready should not produce a command")
 	}
