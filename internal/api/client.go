@@ -12,6 +12,7 @@ import (
 )
 
 const defaultBaseURL = "https://api.openai.com"
+const responsesPath = "/v1/responses"
 
 // ResponsesClient streams responses from the OpenAI Responses API.
 type ResponsesClient struct {
@@ -55,7 +56,7 @@ func (c *ResponsesClient) Stream(
 
 		httpReq, err := http.NewRequestWithContext(
 			ctx, http.MethodPost,
-			c.baseURL+"/v1/responses",
+			c.baseURL+responsesPath,
 			bytes.NewReader(body),
 		)
 		if err != nil {
@@ -98,7 +99,7 @@ func (c *ResponsesClient) Send(
 
 	httpReq, err := http.NewRequestWithContext(
 		ctx, http.MethodPost,
-		c.baseURL+"/v1/responses",
+		c.baseURL+responsesPath,
 		bytes.NewReader(body),
 	)
 	if err != nil {
