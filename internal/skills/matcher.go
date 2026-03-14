@@ -7,6 +7,11 @@ import (
 
 const implicitThreshold = 0.4
 
+const (
+	descriptionWeight = 0.7
+	nameWeight        = 0.3
+)
+
 // Matcher scores skills against prompts for implicit invocation.
 type Matcher struct {
 	registry *Registry
@@ -39,7 +44,7 @@ func (m *Matcher) Score(prompt string, skill Skill) float64 {
 	nameScore := float64(len(nameOverlap)) / float64(max(len(nameWords), 1))
 
 	// Combined score with name getting a bonus
-	return descScore*0.7 + nameScore*0.3
+	return descScore*descriptionWeight + nameScore*nameWeight
 }
 
 // BestMatch returns the highest-scoring implicit skill above the threshold.

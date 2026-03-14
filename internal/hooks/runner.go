@@ -12,6 +12,7 @@ import (
 )
 
 const defaultTimeout = 10 * time.Second
+const processWaitDelay = 1 * time.Second
 
 // HookEvent identifies a lifecycle point.
 type HookEvent string
@@ -71,7 +72,7 @@ func (r *Runner) Fire(event HookEvent, vars map[string]string) (*HookResult, err
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", expanded)
-	cmd.WaitDelay = 1 * time.Second
+	cmd.WaitDelay = processWaitDelay
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
@@ -121,7 +122,7 @@ func (r *Runner) FireAsync(event HookEvent, vars map[string]string) {
 		cmd := exec.CommandContext(ctx, "sh", "-c", expanded)
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
-		cmd.WaitDelay = 1 * time.Second
+		cmd.WaitDelay = processWaitDelay
 		_ = cmd.Run()
 	}()
 }

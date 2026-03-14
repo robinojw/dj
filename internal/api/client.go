@@ -13,6 +13,7 @@ import (
 
 const defaultBaseURL = "https://api.openai.com"
 const responsesPath = "/v1/responses"
+const sseBufferSize = 1024 * 1024
 
 // ResponsesClient streams responses from the OpenAI Responses API.
 type ResponsesClient struct {
@@ -135,7 +136,7 @@ func (c *ResponsesClient) parseSSE(
 ) {
 	scanner := bufio.NewScanner(body)
 	// Increase buffer for large SSE events
-	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, sseBufferSize), sseBufferSize)
 
 	for scanner.Scan() {
 		select {

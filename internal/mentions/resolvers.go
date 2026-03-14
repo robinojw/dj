@@ -60,7 +60,7 @@ func resolveFile(path string) (string, error) {
 
 func resolveURL(ctx context.Context, url string) (string, error) {
 	// Shell out to curl for simplicity — avoids importing net/http for one-off fetches
-	cmd := exec.CommandContext(ctx, "curl", "-sL", "--max-time", "10", url)
+	cmd := exec.CommandContext(ctx, "curl", "-sL", "--max-time", fmt.Sprintf("%.0f", resolveTimeout.Seconds()), url)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("fetch %s: %w", url, err)
