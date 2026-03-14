@@ -22,12 +22,12 @@ const (
 // streamEvent carries a streaming update from the API to the UI.
 type streamEvent struct {
 	Type      streamEventType
-	Delta     string    // for eventText
-	Usage     api.Usage // for eventDone
-	Err       error     // for eventError
-	FilePath  string    // for eventDiff
-	DiffText  string    // for eventDiff
-	Timestamp time.Time // for eventDiff
+	Delta     string
+	Usage     api.Usage
+	Err       error
+	FilePath  string
+	DiffText  string
+	Timestamp time.Time
 }
 
 // diffStats holds addition/deletion counts for a diff.
@@ -74,7 +74,6 @@ func bridgeStreamToChannel(ctx context.Context, chunks <-chan api.ResponseChunk,
 
 		case chunk, ok := <-chunks:
 			if !ok {
-				// Chunks channel closed, check for final errors
 				select {
 				case err := <-errs:
 					trySend(ctx, eventCh, streamEvent{Type: eventError, Err: classifyError(err)})

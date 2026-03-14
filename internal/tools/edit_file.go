@@ -53,7 +53,6 @@ func EditFileHandler(workspaceRoot string) ToolHandler {
 			return "", fmt.Errorf("edit_file: old_string not found in %s", filePath)
 		}
 
-		// Preserve original file permissions
 		if err := os.WriteFile(absPath, []byte(replaced), info.Mode()); err != nil {
 			return "", fmt.Errorf("edit_file: write failed: %w", err)
 		}
@@ -67,18 +66,15 @@ func EditFileHandler(workspaceRoot string) ToolHandler {
 //  2. Trimmed-line match (leading/trailing whitespace per line)
 //  3. Normalized whitespace match (all runs of whitespace → single space)
 func replaceWithWhitespaceTolerance(content, oldStr, newStr string) (string, int) {
-	// Tier 1: exact match
 	if strings.Contains(content, oldStr) {
 		result := strings.Replace(content, oldStr, newStr, 1)
 		return result, 1
 	}
 
-	// Tier 2: trimmed-line match
 	if result, ok := trimmedLineReplace(content, oldStr, newStr); ok {
 		return result, 1
 	}
 
-	// Tier 3: normalized whitespace
 	if result, ok := normalizedReplace(content, oldStr, newStr); ok {
 		return result, 1
 	}
@@ -104,7 +100,6 @@ func trimmedLineReplace(content, oldStr, newStr string) (string, bool) {
 			}
 		}
 		if match {
-			// Replace the matched lines, preserving original indentation for new content
 			before := strings.Join(contentLines[:i], "\n")
 			after := strings.Join(contentLines[i+len(oldLines):], "\n")
 

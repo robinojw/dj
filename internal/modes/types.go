@@ -4,9 +4,9 @@ package modes
 type ExecutionMode int
 
 const (
-	ModeConfirm ExecutionMode = iota // ask before write/exec/MCP tools
-	ModePlan                          // read-only, high reasoning
-	ModeTurbo                         // bypass all permissions
+	ModeConfirm ExecutionMode = iota
+	ModePlan
+	ModeTurbo
 )
 
 func (m ExecutionMode) String() string {
@@ -40,15 +40,14 @@ func (m ExecutionMode) StatusLabel() string {
 type ToolClass int
 
 const (
-	ToolRead      ToolClass = iota // read_file, list_dir, search_code
-	ToolWrite                      // write_file, create_file, delete_file
-	ToolExec                       // bash, run_script, run_tests
-	ToolMCPMutate                  // MCP tools that modify state
-	ToolMCPRead                    // MCP tools flagged read-only
-	ToolNetwork                    // web_fetch, http_request
+	ToolRead      ToolClass = iota
+	ToolWrite
+	ToolExec
+	ToolMCPMutate
+	ToolMCPRead
+	ToolNetwork
 )
 
-// toolClasses maps tool names to their security classification.
 var toolClasses = map[string]ToolClass{
 	"read_file":    ToolRead,
 	"list_dir":     ToolRead,
@@ -69,7 +68,7 @@ func ClassifyTool(toolName string) ToolClass {
 	if class, ok := toolClasses[toolName]; ok {
 		return class
 	}
-	return ToolWrite // default to conservative
+	return ToolWrite
 }
 
 // ToolClassifier provides annotation data for tool classification.
@@ -98,15 +97,15 @@ func ClassifyToolWithRegistry(toolName string, registry ToolClassifier) ToolClas
 type GateDecision int
 
 const (
-	GateAllow   GateDecision = iota // execute immediately
-	GateDeny                         // block execution
-	GateAskUser                      // show permission modal
+	GateAllow   GateDecision = iota
+	GateDeny
+	GateAskUser
 )
 
 // ModeConfig holds the system prompt and reasoning effort for a mode.
 type ModeConfig struct {
 	Mode            ExecutionMode
-	AllowedTools    []string // nil = all tools (Turbo/Confirm), specific list for Plan
+	AllowedTools    []string
 	SystemPrompt    string
 	ReasoningEffort string
 }
@@ -136,13 +135,13 @@ var Modes = map[ExecutionMode]ModeConfig{
 	},
 	ModeConfirm: {
 		Mode:            ModeConfirm,
-		AllowedTools:    nil, // all tools available
+		AllowedTools:    nil,
 		SystemPrompt:    confirmSystemPrompt,
 		ReasoningEffort: "medium",
 	},
 	ModeTurbo: {
 		Mode:            ModeTurbo,
-		AllowedTools:    nil, // all tools available
+		AllowedTools:    nil,
 		SystemPrompt:    turboSystemPrompt,
 		ReasoningEffort: "medium",
 	},

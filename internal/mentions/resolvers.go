@@ -59,7 +59,6 @@ func resolveFile(path string) (string, error) {
 }
 
 func resolveURL(ctx context.Context, url string) (string, error) {
-	// Shell out to curl for simplicity — avoids importing net/http for one-off fetches
 	cmd := exec.CommandContext(ctx, "curl", "-sL", "--max-time", fmt.Sprintf("%.0f", resolveTimeout.Seconds()), url)
 	output, err := cmd.Output()
 	if err != nil {
@@ -69,7 +68,6 @@ func resolveURL(ctx context.Context, url string) (string, error) {
 }
 
 func resolveFunction(name string) (string, error) {
-	// Grep for function definition in current directory
 	cmd := exec.Command("grep", "-rn", fmt.Sprintf("func.*%s", name), ".")
 	output, err := cmd.Output()
 	if err != nil {
@@ -82,7 +80,6 @@ func resolveGit(ctx context.Context, ref string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", "diff", ref)
 	output, err := cmd.Output()
 	if err != nil {
-		// Try git show as fallback
 		cmd = exec.CommandContext(ctx, "git", "show", ref)
 		output, err = cmd.Output()
 		if err != nil {
@@ -93,14 +90,12 @@ func resolveGit(ctx context.Context, ref string) (string, error) {
 }
 
 func resolveTest(ctx context.Context, name string) (string, error) {
-	// Try Go test first
 	cmd := exec.CommandContext(ctx, "go", "test", "-run", name, "-v", "./...")
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		return string(output), nil
 	}
 
-	// Try npm test as fallback
 	cmd = exec.CommandContext(ctx, "npx", "vitest", "run", "-t", name)
 	output, err = cmd.CombinedOutput()
 	if err != nil {

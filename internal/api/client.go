@@ -135,7 +135,6 @@ func (c *ResponsesClient) parseSSE(
 	errs chan<- error,
 ) {
 	scanner := bufio.NewScanner(body)
-	// Increase buffer for large SSE events
 	scanner.Buffer(make([]byte, 0, sseBufferSize), sseBufferSize)
 
 	for scanner.Scan() {
@@ -147,7 +146,6 @@ func (c *ResponsesClient) parseSSE(
 
 		line := scanner.Text()
 
-		// SSE format: "data: {...}" or "data: [DONE]"
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
@@ -159,7 +157,7 @@ func (c *ResponsesClient) parseSSE(
 
 		var event sseEvent
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			continue // skip malformed events
+			continue
 		}
 
 		chunk := c.eventToChunk(event)

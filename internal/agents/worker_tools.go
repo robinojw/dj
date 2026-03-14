@@ -42,7 +42,6 @@ func (w *Worker) executeToolCalls(
 			"worker_id": w.ID,
 		}, updates)
 
-		// Generate diff if this tool mutates files
 		if err == nil && w.isMutatingTool(call.Name) {
 			if filePath, ok := w.extractToolFilePath(call.Name, args); ok {
 				if diff, diffErr := generateGitDiff(filePath); diffErr == nil {

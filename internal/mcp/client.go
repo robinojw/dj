@@ -20,14 +20,11 @@ type Client struct {
 	serverInfo MCPServerInfo
 	tools      []MCPTool
 
-	// stdio transport
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout *bufio.Reader
-	mu     sync.Mutex
-	nextID atomic.Int64
-
-	// http transport
+	cmd        *exec.Cmd
+	stdin      io.WriteCloser
+	stdout     *bufio.Reader
+	mu         sync.Mutex
+	nextID     atomic.Int64
 	httpClient *http.Client
 }
 
@@ -74,12 +71,10 @@ func (c *Client) connectStdio(ctx context.Context) error {
 		return fmt.Errorf("start MCP server %s: %w", c.Config.Name, err)
 	}
 
-	// Perform initialize handshake
 	return c.initialize(ctx)
 }
 
 func (c *Client) connectHTTP(ctx context.Context) error {
-	// For HTTP MCP servers, validate connectivity
 	return c.initialize(ctx)
 }
 
@@ -100,7 +95,6 @@ func (c *Client) initialize(ctx context.Context) error {
 
 	c.serverInfo = result.ServerInfo
 
-	// Send initialized notification
 	_ = c.notify(ctx, "notifications/initialized", nil)
 
 	return nil

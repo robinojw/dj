@@ -3,9 +3,9 @@ package modes
 // Gate controls tool access through allow/deny lists and mode rules.
 type Gate struct {
 	mode      ExecutionMode
-	allowList []string       // session or persisted
-	denyList  []string       // from config
-	registry  ToolClassifier // optional annotation source
+	allowList []string
+	denyList  []string
+	registry  ToolClassifier
 }
 
 // NewGate creates a gate with the given mode and lists.
@@ -34,17 +34,14 @@ func (g *Gate) SetMode(mode ExecutionMode) {
 
 // Evaluate determines whether a tool call should be allowed.
 func (g *Gate) Evaluate(toolName string, args map[string]any) GateDecision {
-	// 1. Deny list always wins
 	if g.isDenied(toolName) {
 		return GateDeny
 	}
 
-	// 2. Allow list passes
 	if g.isAllowed(toolName) {
 		return GateAllow
 	}
 
-	// 3. Mode-specific logic (use registry-aware classification when available)
 	class := ClassifyToolWithRegistry(toolName, g.registry)
 
 	switch g.mode {

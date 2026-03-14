@@ -31,13 +31,13 @@ type HookResult struct {
 	Stderr   string
 	ExitCode int
 	Duration time.Duration
-	Err      error // non-nil only for infrastructure failures (sh not found, timeout)
+	Err      error
 }
 
 // Config holds hook shell command templates.
 type Config struct {
 	Hooks   map[string]string
-	Timeout time.Duration // 0 means use defaultTimeout
+	Timeout time.Duration
 }
 
 func (c Config) timeout() time.Duration {
@@ -97,7 +97,6 @@ func (r *Runner) Fire(event HookEvent, vars map[string]string) (*HookResult, err
 				result.ExitCode = 1
 			}
 		} else {
-			// Infrastructure failure (e.g., sh not found, timeout)
 			result.Err = fmt.Errorf("hook %s failed: %w", event, err)
 			return result, result.Err
 		}

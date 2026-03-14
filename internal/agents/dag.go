@@ -9,8 +9,8 @@ import (
 
 // dagState holds the mutable scheduling state for topological execution.
 type dagState struct {
-	inDegree   map[string]int      // remaining unmet deps per task
-	dependents map[string][]string // task ID → IDs that depend on it
+	inDegree   map[string]int
+	dependents map[string][]string
 	mu         sync.Mutex
 }
 
