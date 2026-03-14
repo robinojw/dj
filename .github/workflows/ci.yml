@@ -32,10 +32,21 @@ jobs:
       - name: Test
         run: go test ./... -v -race
 
-      - name: Vet
-        run: go vet ./...
-
-      - name: Staticcheck
-        uses: dominikh/staticcheck-action@v1
+      - name: Lint
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: "latest"
+          version: v2.1.6
+
+      - name: Check file length
+        run: |
+          violations=""
+          for f in $(find . -name '*.go' ! -name '*_test.go' ! -name '*_gsx.go' -not -path './vendor/*'); do
+            lines=$(wc -l < "$f")
+            if [ "$lines" -gt 300 ]; then
+              violations="${violations}${f}: ${lines} lines (max 300)\n"
+            fi
+          done
+          if [ -n "$violations" ]; then
+            printf "File length violations:\n%b" "$violations"
+            exit 1
+          fi
