@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -62,21 +63,23 @@ type storedDiff struct {
 	Timestamp time.Time
 }
 
-// bridgeStreamToChannel reads from api.Stream() channels and sends streamEvents.
-// Run this in a goroutine. It closes eventCh when done.
-func bridgeStreamToChannel(chunks <-chan api.ResponseChunk, errs <-chan error, eventCh chan<- streamEvent) {
-	defer close(eventCh)
-
+// bridgeStreamToChannel reads from api.Stream() channels and sends streamEvents
+// to eventCh. It does NOT close eventCh (the channel is reused across streams).
+// The goroutine exits when ctx is cancelled or the stream completes.
+func bridgeStreamToChannel(ctx context.Context, chunks <-chan api.ResponseChunk, errs <-chan error, eventCh chan<- streamEvent) {
 	for {
 		select {
+		case <-ctx.Done():
+			return
+
 		case chunk, ok := <-chunks:
 			if !ok {
 				// Chunks channel closed, check for final errors
 				select {
 				case err := <-errs:
-					eventCh <- streamEvent{Type: eventError, Err: classifyError(err)}
+					trySend(ctx, eventCh, streamEvent{Type: eventError, Err: classifyError(err)})
 				default:
-					eventCh <- streamEvent{Type: eventDone, Usage: api.Usage{}}
+					trySend(ctx, eventCh, streamEvent{Type: eventDone, Usage: api.Usage{}})
 				}
 				return
 			}
@@ -84,25 +87,33 @@ func bridgeStreamToChannel(chunks <-chan api.ResponseChunk, errs <-chan error, e
 			switch chunk.Type {
 			case "response.output_text.delta":
 				if chunk.Delta != "" {
-					eventCh <- streamEvent{Type: eventText, Delta: chunk.Delta}
+					trySend(ctx, eventCh, streamEvent{Type: eventText, Delta: chunk.Delta})
 				}
 			case "response.completed":
 				usage := api.Usage{}
 				if chunk.Response != nil {
 					usage = chunk.Response.Usage
 				}
-				eventCh <- streamEvent{Type: eventDone, Usage: usage}
+				trySend(ctx, eventCh, streamEvent{Type: eventDone, Usage: usage})
 				return
 			}
 
 		case err, ok := <-errs:
 			if ok {
-				eventCh <- streamEvent{Type: eventError, Err: classifyError(err)}
+				trySend(ctx, eventCh, streamEvent{Type: eventError, Err: classifyError(err)})
 			} else {
-				eventCh <- streamEvent{Type: eventDone, Usage: api.Usage{}}
+				trySend(ctx, eventCh, streamEvent{Type: eventDone, Usage: api.Usage{}})
 			}
 			return
 		}
+	}
+}
+
+// trySend sends an event to the channel, aborting if the context is cancelled.
+func trySend(ctx context.Context, ch chan<- streamEvent, ev streamEvent) {
+	select {
+	case ch <- ev:
+	case <-ctx.Done():
 	}
 }
 

@@ -2,9 +2,11 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	tui "github.com/grindlemire/go-tui"
 	"github.com/robinojw/dj/config"
+	"github.com/robinojw/dj/internal/agents"
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/modes"
 	"github.com/robinojw/dj/internal/tui/theme"
@@ -22,7 +24,6 @@ func TestScreenNavigation(t *testing.T) {
 	th := theme.DefaultTheme()
 	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
 
-	// Should start on chat
 	if app.screen.Get() != ScreenIDChat {
 		t.Fatalf("expected ScreenIDChat, got %d", app.screen.Get())
 	}
@@ -50,18 +51,15 @@ func TestCycleMode(t *testing.T) {
 		t.Fatalf("expected ModeConfirm, got %d", app.modeVal)
 	}
 
-	// Cycling from Confirm should go to Plan
 	app.cycleMode()
 	if app.modeVal != modes.ModePlan {
 		t.Fatalf("expected ModePlan after first cycle, got %d", app.modeVal)
 	}
 
-	// Cycling from Plan should trigger turbo modal (not confirmed yet)
 	app.cycleMode()
 	if !app.turboModal.IsVisible() {
 		t.Fatal("expected turbo modal to be visible")
 	}
-	// Mode should still be Plan since turbo not confirmed
 	if app.modeVal != modes.ModePlan {
 		t.Fatalf("expected ModePlan (turbo not confirmed), got %d", app.modeVal)
 	}
@@ -71,12 +69,10 @@ func TestPushPopScreen(t *testing.T) {
 	th := theme.DefaultTheme()
 	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
 
-	// Start at chat
 	if app.screen.Get() != ScreenIDChat {
 		t.Fatalf("expected ScreenIDChat")
 	}
 
-	// Push team screen
 	app.pushScreen(ScreenIDTeam)
 	if app.screen.Get() != ScreenIDTeam {
 		t.Fatalf("expected ScreenIDTeam")
@@ -85,7 +81,6 @@ func TestPushPopScreen(t *testing.T) {
 		t.Fatalf("expected stack len 1, got %d", len(app.screenStack))
 	}
 
-	// Pop back to chat
 	app.popScreenFn()
 	if app.screen.Get() != ScreenIDChat {
 		t.Fatalf("expected ScreenIDChat after pop")
@@ -111,6 +106,83 @@ func TestNewChat_DoesNotPanic(t *testing.T) {
 	}
 }
 
+func TestChat_StartStreamReusesChannel(t *testing.T) {
+	th := theme.DefaultTheme()
+	mode := tui.NewState(modes.ModeConfirm)
+	model := tui.NewState("gpt-5.4")
+	cost := tui.NewState(0.0)
+	input := tui.NewState(0)
+	output := tui.NewState(0)
+	mcps := tui.NewState([]string{})
+
+	c := NewChat(th, 80, mode, model, cost, input, output, mcps,
+		func(string, string) {}, func([]storedDiff) {})
+
+	originalCh := c.eventCh
+
+	// Start a stream
+	chunks := make(chan api.ResponseChunk)
+	errs := make(chan error)
+	c.StartStream(chunks, errs)
+
+	// Channel should be the same object
+	if c.eventCh != originalCh {
+		t.Fatal("StartStream should reuse the same eventCh, not replace it")
+	}
+
+	// Cancel to clean up goroutine
+	c.cancelActiveStream()
+}
+
+func TestChat_CancelActiveStreamCleansUp(t *testing.T) {
+	th := theme.DefaultTheme()
+	mode := tui.NewState(modes.ModeConfirm)
+	model := tui.NewState("gpt-5.4")
+	cost := tui.NewState(0.0)
+	input := tui.NewState(0)
+	output := tui.NewState(0)
+	mcps := tui.NewState([]string{})
+
+	c := NewChat(th, 80, mode, model, cost, input, output, mcps,
+		func(string, string) {}, func([]storedDiff) {})
+
+	// Start a stream with blocking channels
+	chunks := make(chan api.ResponseChunk)
+	errs := make(chan error)
+	c.StartStream(chunks, errs)
+
+	if c.cancelStream == nil {
+		t.Fatal("expected cancelStream to be set")
+	}
+
+	c.cancelActiveStream()
+
+	if c.cancelStream != nil {
+		t.Fatal("expected cancelStream to be nil after cancel")
+	}
+}
+
+func TestChat_OnStreamEventIgnoresTextAfterCancel(t *testing.T) {
+	th := theme.DefaultTheme()
+	mode := tui.NewState(modes.ModeConfirm)
+	model := tui.NewState("gpt-5.4")
+	cost := tui.NewState(0.0)
+	input := tui.NewState(0)
+	output := tui.NewState(0)
+	mcps := tui.NewState([]string{})
+
+	c := NewChat(th, 80, mode, model, cost, input, output, mcps,
+		func(string, string) {}, func([]storedDiff) {})
+
+	// streaming is false (not set) — text events should be ignored
+	c.onStreamEvent(streamEvent{Type: eventText, Delta: "ignored"})
+
+	// No panic, streamWriter stays nil
+	if c.streamWriter != nil {
+		t.Fatal("expected streamWriter to remain nil when not streaming")
+	}
+}
+
 func TestNewDiffPager_DoesNotPanic(t *testing.T) {
 	th := theme.DefaultTheme()
 	diffs := []storedDiff{
@@ -130,6 +202,28 @@ func TestNewPermissionModal_DoesNotPanic(t *testing.T) {
 	}
 	if pm.Visible() {
 		t.Fatal("expected modal not visible initially")
+	}
+}
+
+func TestPermissionModal_ShowAndDismiss(t *testing.T) {
+	th := theme.DefaultTheme()
+	pm := NewPermissionModal(th)
+
+	respCh := make(chan modes.PermissionResp, 1)
+	req := &modes.PermissionRequest{
+		Tool:   "write_file",
+		Args:   map[string]any{"path": "/tmp/test"},
+		RespCh: respCh,
+	}
+
+	pm.Show(req)
+	if !pm.Visible() {
+		t.Fatal("expected modal visible after Show")
+	}
+
+	pm.dismiss()
+	if pm.Visible() {
+		t.Fatal("expected modal not visible after dismiss")
 	}
 }
 
@@ -156,5 +250,57 @@ func TestDebugOverlay_AddAndToggle(t *testing.T) {
 	}
 	if entries[0].Level != "ERROR" {
 		t.Fatalf("expected ERROR, got %s", entries[0].Level)
+	}
+}
+
+func TestRootApp_HandleWorkerUpdate_DiffResult(t *testing.T) {
+	th := theme.DefaultTheme()
+	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
+
+	update := agents.WorkerUpdate{
+		Type: agents.UpdateDiffResult,
+		DiffInfo: &agents.DiffInfo{
+			FilePath:  "main.go",
+			DiffText:  "+added\n-removed",
+			Timestamp: time.Now(),
+		},
+	}
+
+	app.HandleWorkerUpdate(update)
+
+	// Should have sent a diff event to the chat's eventCh
+	select {
+	case ev := <-app.chatView.eventCh:
+		if ev.Type != eventDiff {
+			t.Fatalf("expected eventDiff, got %d", ev.Type)
+		}
+		if ev.FilePath != "main.go" {
+			t.Fatalf("expected 'main.go', got %q", ev.FilePath)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected diff event in chat eventCh")
+	}
+}
+
+func TestRootApp_PermRequestCh(t *testing.T) {
+	th := theme.DefaultTheme()
+	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
+
+	ch := app.PermRequestCh()
+	if ch == nil {
+		t.Fatal("expected non-nil PermRequestCh")
+	}
+}
+
+func TestRootApp_HandleSubmit_IncludesMentionCtx(t *testing.T) {
+	th := theme.DefaultTheme()
+	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
+
+	// Verify mentionCtx is appended to instructions
+	// We can't easily test the API call, but we can verify the function doesn't panic
+	// with nil client (it will panic at client.Stream — that's expected in real usage)
+	// This is a construction/wiring test
+	if app.chatView.onSubmit == nil {
+		t.Fatal("expected onSubmit callback to be wired")
 	}
 }

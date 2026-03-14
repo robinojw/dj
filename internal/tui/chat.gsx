@@ -17,8 +17,9 @@ type chat struct {
 	streaming    *tui.State[bool]
 	streamWriter *tui.StreamWriter
 	eventCh      chan streamEvent
-	messages     []chatMessage   // kept for API context
-	diffs        []storedDiff    // stored for diff pager
+	cancelStream context.CancelFunc // cancels the bridge goroutine
+	messages     []chatMessage      // kept for API context
+	diffs        []storedDiff       // stored for diff pager
 	onSubmit     func(text string, mentionCtx string) // callback to root
 	onOpenDiffs  func(diffs []storedDiff)              // callback to open diff pager
 	mode         *tui.State[modes.ExecutionMode]
@@ -69,12 +70,12 @@ func NewChat(
 
 func (c *chat) Init() func() {
 	return func() {
-		if c.streamWriter != nil {
-			c.streamWriter.Close()
-		}
+		c.cancelActiveStream()
 	}
 }
 
+// Watchers returns the channel watcher for stream events.
+// The eventCh is stable for the lifetime of the component — never replaced.
 func (c *chat) Watchers() []tui.Watcher {
 	return []tui.Watcher{
 		tui.NewChannelWatcher(c.eventCh, c.onStreamEvent),
@@ -82,8 +83,16 @@ func (c *chat) Watchers() []tui.Watcher {
 }
 
 func (c *chat) onStreamEvent(ev streamEvent) {
+	// Ignore events if streaming was cancelled (e.g. user pressed Escape)
+	if !c.streaming.Get() && ev.Type == eventText {
+		return
+	}
+
 	switch ev.Type {
 	case eventText:
+		if c.app == nil {
+			return
+		}
 		if c.streamWriter == nil {
 			c.streamWriter = c.app.StreamAbove()
 			c.streamWriter.WriteStyled("DJ: ", c.t.TuiPrimaryStyle())
@@ -104,13 +113,17 @@ func (c *chat) onStreamEvent(ev streamEvent) {
 			c.streamWriter.Close()
 			c.streamWriter = nil
 		}
-		c.app.PrintAboveln("DJ: Error: %s", ev.Err.Error())
+		if c.app != nil {
+			c.app.PrintAboveln("DJ: Error: %s", ev.Err.Error())
+		}
 		c.messages = append(c.messages, chatMessage{Role: "assistant", Content: "Error: " + ev.Err.Error()})
 		c.streaming.Set(false)
 
 	case eventDiff:
 		summary := formatDiffSummary(ev.FilePath, ev.DiffText)
-		c.app.PrintAboveln("%s", summary)
+		if c.app != nil {
+			c.app.PrintAboveln("%s", summary)
+		}
 		c.diffs = append(c.diffs, storedDiff{
 			FilePath:  ev.FilePath,
 			DiffLines: strings.Split(ev.DiffText, "\n"),
@@ -125,7 +138,9 @@ func (c *chat) submit(text string) {
 		return
 	}
 
-	c.app.PrintAboveln("You: %s", text)
+	if c.app != nil {
+		c.app.PrintAboveln("You: %s", text)
+	}
 	c.messages = append(c.messages, chatMessage{Role: "user", Content: text})
 	c.streaming.Set(true)
 
@@ -142,10 +157,26 @@ func (c *chat) submit(text string) {
 }
 
 // StartStream is called by the root app after api.Stream() returns channels.
+// Uses the stable eventCh — the watcher stays attached.
 func (c *chat) StartStream(chunks <-chan api.ResponseChunk, errs <-chan error) {
-	newCh := make(chan streamEvent, 100)
-	c.eventCh = newCh
-	go bridgeStreamToChannel(chunks, errs, newCh)
+	// Cancel any previous stream goroutine
+	c.cancelActiveStream()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c.cancelStream = cancel
+	go bridgeStreamToChannel(ctx, chunks, errs, c.eventCh)
+}
+
+// cancelActiveStream cancels the current bridge goroutine and cleans up the stream writer.
+func (c *chat) cancelActiveStream() {
+	if c.cancelStream != nil {
+		c.cancelStream()
+		c.cancelStream = nil
+	}
+	if c.streamWriter != nil {
+		c.streamWriter.Close()
+		c.streamWriter = nil
+	}
 }
 
 // Messages returns the message history for API context.
@@ -157,11 +188,8 @@ func (c *chat) KeyMap() tui.KeyMap {
 	if c.streaming.Get() {
 		return tui.KeyMap{
 			tui.OnKey(tui.KeyEscape, func(ke tui.KeyEvent) {
+				c.cancelActiveStream()
 				c.streaming.Set(false)
-				if c.streamWriter != nil {
-					c.streamWriter.Close()
-					c.streamWriter = nil
-				}
 			}),
 		}
 	}

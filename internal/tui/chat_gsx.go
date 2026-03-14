@@ -20,6 +20,7 @@ type chat struct {
 	streaming    *tui.State[bool]
 	streamWriter *tui.StreamWriter
 	eventCh      chan streamEvent
+	cancelStream context.CancelFunc                   // cancels the bridge goroutine
 	messages     []chatMessage                        // kept for API context
 	diffs        []storedDiff                         // stored for diff pager
 	onSubmit     func(text string, mentionCtx string) // callback to root
@@ -72,9 +73,7 @@ func NewChat(
 
 func (c *chat) Init() func() {
 	return func() {
-		if c.streamWriter != nil {
-			c.streamWriter.Close()
-		}
+		c.cancelActiveStream()
 	}
 }
 
@@ -85,8 +84,16 @@ func (c *chat) Watchers() []tui.Watcher {
 }
 
 func (c *chat) onStreamEvent(ev streamEvent) {
+	// Ignore events if streaming was cancelled (e.g. user pressed Escape)
+	if !c.streaming.Get() && ev.Type == eventText {
+		return
+	}
+
 	switch ev.Type {
 	case eventText:
+		if c.app == nil {
+			return
+		}
 		if c.streamWriter == nil {
 			c.streamWriter = c.app.StreamAbove()
 			c.streamWriter.WriteStyled("DJ: ", c.t.TuiPrimaryStyle())
@@ -107,13 +114,17 @@ func (c *chat) onStreamEvent(ev streamEvent) {
 			c.streamWriter.Close()
 			c.streamWriter = nil
 		}
-		c.app.PrintAboveln("DJ: Error: %s", ev.Err.Error())
+		if c.app != nil {
+			c.app.PrintAboveln("DJ: Error: %s", ev.Err.Error())
+		}
 		c.messages = append(c.messages, chatMessage{Role: "assistant", Content: "Error: " + ev.Err.Error()})
 		c.streaming.Set(false)
 
 	case eventDiff:
 		summary := formatDiffSummary(ev.FilePath, ev.DiffText)
-		c.app.PrintAboveln("%s", summary)
+		if c.app != nil {
+			c.app.PrintAboveln("%s", summary)
+		}
 		c.diffs = append(c.diffs, storedDiff{
 			FilePath:  ev.FilePath,
 			DiffLines: strings.Split(ev.DiffText, "\n"),
@@ -128,7 +139,9 @@ func (c *chat) submit(text string) {
 		return
 	}
 
-	c.app.PrintAboveln("You: %s", text)
+	if c.app != nil {
+		c.app.PrintAboveln("You: %s", text)
+	}
 	c.messages = append(c.messages, chatMessage{Role: "user", Content: text})
 	c.streaming.Set(true)
 
@@ -145,9 +158,23 @@ func (c *chat) submit(text string) {
 }
 
 func (c *chat) StartStream(chunks <-chan api.ResponseChunk, errs <-chan error) {
-	newCh := make(chan streamEvent, 100)
-	c.eventCh = newCh
-	go bridgeStreamToChannel(chunks, errs, newCh)
+	// Cancel any previous stream goroutine
+	c.cancelActiveStream()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c.cancelStream = cancel
+	go bridgeStreamToChannel(ctx, chunks, errs, c.eventCh)
+}
+
+func (c *chat) cancelActiveStream() {
+	if c.cancelStream != nil {
+		c.cancelStream()
+		c.cancelStream = nil
+	}
+	if c.streamWriter != nil {
+		c.streamWriter.Close()
+		c.streamWriter = nil
+	}
 }
 
 func (c *chat) Messages() []chatMessage {
@@ -158,11 +185,8 @@ func (c *chat) KeyMap() tui.KeyMap {
 	if c.streaming.Get() {
 		return tui.KeyMap{
 			tui.OnKey(tui.KeyEscape, func(ke tui.KeyEvent) {
+				c.cancelActiveStream()
 				c.streaming.Set(false)
-				if c.streamWriter != nil {
-					c.streamWriter.Close()
-					c.streamWriter = nil
-				}
 			}),
 		}
 	}
@@ -213,6 +237,7 @@ func (c *chat) UpdateProps(fresh tui.Component) {
 	}
 	c.app = f.app
 	c.streamWriter = f.streamWriter
+	c.cancelStream = f.cancelStream
 	c.messages = f.messages
 	c.diffs = f.diffs
 	c.width = f.width
