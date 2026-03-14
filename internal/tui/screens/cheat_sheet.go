@@ -31,7 +31,7 @@ func (m CheatSheetModel) Update(msg tea.Msg) (CheatSheetModel, tea.Cmd) {
 }
 
 func (m CheatSheetModel) View() string {
-	w := min(m.width-4, 60)
+	w := max(min(m.width-4, 60), 0)
 	border := strings.Repeat("═", w)
 
 	title := m.theme.AccentStyle().Render("  dj — Keyboard Shortcuts                 Ctrl+H  ")

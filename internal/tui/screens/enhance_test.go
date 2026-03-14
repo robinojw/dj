@@ -93,6 +93,36 @@ func TestEnhanceModel_EnterWhenReady(t *testing.T) {
 	}
 }
 
+func TestEnhanceModel_View_ZeroDimensions(t *testing.T) {
+	sizes := []struct {
+		name string
+		w, h int
+	}{
+		{"no_resize", 0, 0},
+		{"1x1", 1, 1},
+		{"2x2", 2, 2},
+		{"narrow", 3, 100},
+		{"short", 100, 1},
+	}
+	for _, sz := range sizes {
+		t.Run(sz.name, func(t *testing.T) {
+			m := NewEnhanceModel(theme.DefaultTheme())
+			if sz.w > 0 || sz.h > 0 {
+				m, _ = m.Update(tea.WindowSizeMsg{Width: sz.w, Height: sz.h})
+			}
+			// Must not panic in any state.
+			_ = m.View()
+
+			// Also test with content loaded.
+			m.SetOriginal("test")
+			_ = m.View()
+
+			m, _ = m.Update(enhanceResultMsg{text: "enhanced"})
+			_ = m.View()
+		})
+	}
+}
+
 func TestEnhanceModel_View_States(t *testing.T) {
 	th := theme.DefaultTheme()
 

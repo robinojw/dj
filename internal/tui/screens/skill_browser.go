@@ -59,7 +59,7 @@ func (m SkillBrowserModel) Update(msg tea.Msg) (SkillBrowserModel, tea.Cmd) {
 }
 
 func (m SkillBrowserModel) View() string {
-	w := min(m.width-4, 60)
+	w := max(min(m.width-4, 60), 0)
 	border := strings.Repeat("═", w)
 
 	title := m.theme.AccentStyle().Render("  Skills Library                           Ctrl+K  ")

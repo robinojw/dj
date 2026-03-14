@@ -61,7 +61,7 @@ type enhanceResultMsg struct {
 
 func (m EnhanceModel) View() string {
 	title := m.theme.AccentStyle().Render("  Enhance Prompt                           Ctrl+E  ")
-	border := strings.Repeat("═", min(m.width-4, 56))
+	border := strings.Repeat("═", max(min(m.width-4, 56), 0))
 
 	var body string
 	if m.loading {
@@ -74,11 +74,11 @@ func (m EnhanceModel) View() string {
 
 		body = strings.Join([]string{
 			beforeLabel,
-			"  " + strings.Repeat("─", min(m.width-8, 48)),
+			"  " + strings.Repeat("─", max(min(m.width-8, 48), 0)),
 			beforeContent,
 			"",
 			afterLabel,
-			"  " + strings.Repeat("─", min(m.width-8, 48)),
+			"  " + strings.Repeat("─", max(min(m.width-8, 48), 0)),
 			afterContent,
 		}, "\n")
 	} else {

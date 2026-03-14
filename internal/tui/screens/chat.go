@@ -103,9 +103,9 @@ func (m ChatModel) Update(msg tea.Msg) (ChatModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		contentWidth := msg.Width - 2 // 1-char horizontal padding each side
+		contentWidth := max(msg.Width-2, 0) // 1-char horizontal padding each side
 		m.viewport.Width = contentWidth
-		m.viewport.Height = msg.Height - 4 // room for input + status
+		m.viewport.Height = max(msg.Height-4, 0) // room for input + status
 		m.input.SetWidth(contentWidth)
 		m.statusBar.Width = contentWidth
 		m.updateViewport()

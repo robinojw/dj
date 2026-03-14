@@ -73,6 +73,29 @@ func TestCheatSheet_View_ContainsFooter(t *testing.T) {
 	}
 }
 
+func TestCheatSheet_View_ZeroDimensions(t *testing.T) {
+	sizes := []struct {
+		name string
+		w, h int
+	}{
+		{"no_resize", 0, 0},
+		{"1x1", 1, 1},
+		{"2x2", 2, 2},
+		{"narrow", 3, 100},
+		{"short", 100, 1},
+	}
+	for _, sz := range sizes {
+		t.Run(sz.name, func(t *testing.T) {
+			m := NewCheatSheetModel(theme.DefaultTheme())
+			if sz.w > 0 || sz.h > 0 {
+				m, _ = m.Update(tea.WindowSizeMsg{Width: sz.w, Height: sz.h})
+			}
+			// Must not panic.
+			_ = m.View()
+		})
+	}
+}
+
 func TestCheatSheet_Init_ReturnsNil(t *testing.T) {
 	m := NewCheatSheetModel(theme.DefaultTheme())
 	if cmd := m.Init(); cmd != nil {

@@ -98,6 +98,9 @@ func progressBar(pct float64, width int, t *theme.Theme) string {
 	if filled > width {
 		filled = width
 	}
+	if filled < 0 {
+		filled = 0
+	}
 	empty := width - filled
 
 	barColor := t.ProgressBarColors(pct)

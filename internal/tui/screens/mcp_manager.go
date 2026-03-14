@@ -73,7 +73,7 @@ func (m MCPManagerModel) Update(msg tea.Msg) (MCPManagerModel, tea.Cmd) {
 }
 
 func (m MCPManagerModel) View() string {
-	w := min(m.width-4, 56)
+	w := max(min(m.width-4, 56), 0)
 	border := strings.Repeat("═", w)
 
 	title := m.theme.AccentStyle().Render("  MCP Servers                              Ctrl+M  ")

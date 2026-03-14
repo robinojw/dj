@@ -105,6 +105,36 @@ func TestSkillBrowser_WindowResize(t *testing.T) {
 	}
 }
 
+func TestSkillBrowser_View_ZeroDimensions(t *testing.T) {
+	sizes := []struct {
+		name string
+		w, h int
+	}{
+		{"no_resize", 0, 0},
+		{"1x1", 1, 1},
+		{"2x2", 2, 2},
+		{"narrow", 3, 100},
+		{"short", 100, 1},
+	}
+	for _, sz := range sizes {
+		t.Run(sz.name, func(t *testing.T) {
+			m := NewSkillBrowserModel(theme.DefaultTheme())
+			if sz.w > 0 || sz.h > 0 {
+				m, _ = m.Update(tea.WindowSizeMsg{Width: sz.w, Height: sz.h})
+			}
+			_ = m.View()
+		})
+
+		t.Run(sz.name+"_with_skills", func(t *testing.T) {
+			m := newSkillBrowserWithSkills(t)
+			if sz.w > 0 || sz.h > 0 {
+				m, _ = m.Update(tea.WindowSizeMsg{Width: sz.w, Height: sz.h})
+			}
+			_ = m.View()
+		})
+	}
+}
+
 func TestSkillBrowser_View_DoesNotPanic(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		m := NewSkillBrowserModel(theme.DefaultTheme())
