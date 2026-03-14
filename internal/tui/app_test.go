@@ -177,9 +177,9 @@ func TestChat_OnStreamEventIgnoresTextAfterCancel(t *testing.T) {
 	// streaming is false (not set) — text events should be ignored
 	c.onStreamEvent(streamEvent{Type: eventText, Delta: "ignored"})
 
-	// No panic, streamWriter stays nil
-	if c.streamWriter != nil {
-		t.Fatal("expected streamWriter to remain nil when not streaming")
+	// No panic, buffer stays empty
+	if c.streamBuf.Len() != 0 {
+		t.Fatal("expected streamBuf to remain empty when not streaming")
 	}
 }
 

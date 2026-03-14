@@ -18,7 +18,7 @@ type chat struct {
 	app          *tui.App
 	textareaRef  *tui.Ref
 	streaming    *tui.State[bool]
-	streamWriter *tui.StreamWriter
+	streamBuf    strings.Builder
 	eventCh      chan streamEvent
 	cancelStream context.CancelFunc                   // cancels the bridge goroutine
 	messages     []chatMessage                        // kept for API context
@@ -84,36 +84,27 @@ func (c *chat) Watchers() []tui.Watcher {
 }
 
 func (c *chat) onStreamEvent(ev streamEvent) {
-	// Ignore events if streaming was cancelled (e.g. user pressed Escape)
 	if !c.streaming.Get() && ev.Type == eventText {
 		return
 	}
 
 	switch ev.Type {
 	case eventText:
-		if c.app == nil {
-			return
-		}
-		if c.streamWriter == nil {
-			c.streamWriter = c.app.StreamAbove()
-			c.streamWriter.WriteStyled("DJ: ", c.t.TuiPrimaryStyle())
-		}
-		c.streamWriter.Write([]byte(ev.Delta))
+		c.streamBuf.WriteString(ev.Delta)
 
 	case eventDone:
-		if c.streamWriter != nil {
-			c.streamWriter.Close()
-			c.streamWriter = nil
+		response := c.streamBuf.String()
+		c.streamBuf.Reset()
+		if c.app != nil && response != "" {
+			c.app.PrintAboveln("DJ: %s", response)
 		}
+		c.messages = append(c.messages, chatMessage{Role: "assistant", Content: response})
 		c.inputTokens.Update(func(v int) int { return v + ev.Usage.InputTokens })
 		c.outputTokens.Update(func(v int) int { return v + ev.Usage.OutputTokens })
 		c.streaming.Set(false)
 
 	case eventError:
-		if c.streamWriter != nil {
-			c.streamWriter.Close()
-			c.streamWriter = nil
-		}
+		c.streamBuf.Reset()
 		if c.app != nil {
 			c.app.PrintAboveln("DJ: Error: %s", ev.Err.Error())
 		}
@@ -171,10 +162,7 @@ func (c *chat) cancelActiveStream() {
 		c.cancelStream()
 		c.cancelStream = nil
 	}
-	if c.streamWriter != nil {
-		c.streamWriter.Close()
-		c.streamWriter = nil
-	}
+	c.streamBuf.Reset()
 }
 
 func (c *chat) Messages() []chatMessage {
@@ -236,7 +224,6 @@ func (c *chat) UpdateProps(fresh tui.Component) {
 		return
 	}
 	c.app = f.app
-	c.streamWriter = f.streamWriter
 	c.cancelStream = f.cancelStream
 	c.messages = f.messages
 	c.diffs = f.diffs

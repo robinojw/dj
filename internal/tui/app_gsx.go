@@ -122,6 +122,7 @@ func NewRootApp(
 	a.enhanceView = NewEnhanceScreen(t, a.popScreenFn, nil)
 	a.mcpView = NewMCPManager(t, a.popScreenFn, nil)
 	a.skillsView = NewSkillBrowser(t, a.popScreenFn)
+	a.diffPagerView = NewDiffPager(t, nil, a.popScreenFn)
 	a.permModal = NewPermissionModal(t)
 	a.turboModal = NewTurboModal(t, a.handleTurboResult)
 	a.debugOverlay = NewDebugOverlay(t)
@@ -134,9 +135,11 @@ func (a *rootApp) PermRequestCh() chan<- modes.PermissionRequest {
 }
 
 func (a *rootApp) Watchers() []tui.Watcher {
-	return []tui.Watcher{
+	watchers := []tui.Watcher{
 		tui.NewChannelWatcher(a.permRequestCh, a.onPermissionRequest),
 	}
+	watchers = append(watchers, a.chatView.Watchers()...)
+	return watchers
 }
 
 func (a *rootApp) onPermissionRequest(req modes.PermissionRequest) {
@@ -165,11 +168,6 @@ func (a *rootApp) HandleWorkerUpdate(update agents.WorkerUpdate) {
 func (a *rootApp) handleSubmit(text string, mentionCtx string) {
 	modeCfg := modes.Modes[a.modeVal]
 
-	var toolDefs []api.Tool
-	if a.toolRegistry != nil {
-		toolDefs = a.toolRegistry.ToolDefinitions(modeCfg.AllowedTools)
-	}
-
 	// Append mention context to instructions if present
 	instructions := modeCfg.SystemPrompt
 	if mentionCtx != "" {
@@ -180,7 +178,6 @@ func (a *rootApp) handleSubmit(text string, mentionCtx string) {
 		Model:        a.model.Get(),
 		Input:        api.MakeStringInput(text),
 		Instructions: instructions,
-		Tools:        toolDefs,
 		Reasoning:    &api.Reasoning{Effort: modeCfg.ReasoningEffort},
 		Stream:       true,
 	}
@@ -279,23 +276,32 @@ func (a *rootApp) KeyMap() tui.KeyMap {
 	}
 
 	if a.screen.Get() == ScreenIDChat {
-		km = append(km,
-			tui.OnKey(tui.KeyCtrlT, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDTeam) }),
-			tui.OnKey(tui.KeyCtrlM, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDMCP) }),
-			tui.OnKey(tui.KeyCtrlK, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDSkills) }),
-			tui.OnKey(tui.KeyCtrlE, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDEnhance) }),
-			tui.OnKey(tui.KeyCtrlH, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDCheatSheet) }),
-			tui.OnKeyStop(tui.KeyTab, func(ke tui.KeyEvent) { a.cycleMode() }),
-			tui.OnKey(tui.KeyCtrlN, func(ke tui.KeyEvent) { a.cycleModel() }),
-			tui.OnKey(tui.KeyCtrlZ, func(ke tui.KeyEvent) {
-				cp := a.checkpoints.Pop()
-				if cp != nil {
-					if err := a.checkpoints.Restore(*cp); err == nil && a.app != nil {
-						a.app.PrintAboveln("[Restored: %s]", cp.Description)
+		if a.chatView.streaming.Get() {
+			km = append(km,
+				tui.OnKey(tui.KeyEscape, func(ke tui.KeyEvent) {
+					a.chatView.cancelActiveStream()
+					a.chatView.streaming.Set(false)
+				}),
+			)
+		} else {
+			km = append(km,
+				tui.OnKey(tui.KeyCtrlT, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDTeam) }),
+				tui.OnKey(tui.KeyCtrlM, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDMCP) }),
+				tui.OnKey(tui.KeyCtrlK, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDSkills) }),
+				tui.OnKey(tui.KeyCtrlE, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDEnhance) }),
+				tui.OnKey(tui.KeyCtrlH, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDCheatSheet) }),
+				tui.OnKeyStop(tui.KeyTab, func(ke tui.KeyEvent) { a.cycleMode() }),
+				tui.OnKey(tui.KeyCtrlN, func(ke tui.KeyEvent) { a.cycleModel() }),
+				tui.OnKey(tui.KeyCtrlZ, func(ke tui.KeyEvent) {
+					cp := a.checkpoints.Pop()
+					if cp != nil {
+						if err := a.checkpoints.Restore(*cp); err == nil && a.app != nil {
+							a.app.PrintAboveln("[Restored: %s]", cp.Description)
+						}
 					}
-				}
-			}),
-		)
+				}),
+			)
+		}
 	}
 
 	return km
