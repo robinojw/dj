@@ -20,9 +20,8 @@ go test ./...                        # all tests
 go test ./internal/agents -v         # single package, verbose
 go test ./internal/tools -run TestEditFile -v  # single test
 
-# Lint / static analysis (both run in CI)
-go vet ./...
-staticcheck ./...
+# Lint (runs in CI via golangci-lint action)
+golangci-lint run
 
 # CI runs tests with race detector
 go test ./... -v -race
