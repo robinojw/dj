@@ -66,6 +66,44 @@ func NewWorker(
 	}
 }
 
+// collectFunctionCalls filters function_call items from a response's output.
+func collectFunctionCalls(output []api.OutputItem) []api.OutputItem {
+	var calls []api.OutputItem
+	for _, item := range output {
+		if item.Type == "function_call" {
+			calls = append(calls, item)
+		}
+	}
+	return calls
+}
+
+// buildFollowUpRequest creates the next API request from tool results.
+func (w *Worker) buildFollowUpRequest(results []api.FunctionCallResult, prevID string) api.CreateResponseRequest {
+	resultsJSON, _ := json.Marshal(results)
+	return api.CreateResponseRequest{
+		Model:              w.model,
+		Input:              resultsJSON,
+		PreviousResponseID: prevID,
+		Reasoning: &api.Reasoning{
+			Effort: Modes[w.Mode].ReasoningEffort,
+		},
+		Stream: true,
+	}
+}
+
+// emitCompletion sends a completed update with usage info.
+func (w *Worker) emitCompletion(updates chan<- WorkerUpdate, resp *api.ResponseObject) {
+	updates <- WorkerUpdate{
+		WorkerID: w.ID,
+		Type:     UpdateCompleted,
+		Content:  w.Output,
+		Usage: UsageInfo{
+			InputTokens:  resp.Usage.InputTokens,
+			OutputTokens: resp.Usage.OutputTokens,
+		},
+	}
+}
+
 // Run executes the worker's task and sends updates to the updates channel.
 // Supports multi-turn tool execution: when the model emits function calls,
 // the worker executes them through the ToolRegistry and feeds results back.
@@ -80,20 +118,14 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 		Input:        api.MakeStringInput(w.Task.Description),
 		Instructions: instructions,
 		Tools:        w.buildToolDefs(modeCfg),
-		Reasoning: &api.Reasoning{
-			Effort: modeCfg.ReasoningEffort,
-		},
-		Stream: true,
+		Reasoning:    &api.Reasoning{Effort: modeCfg.ReasoningEffort},
+		Stream:       true,
 	}
 
 	for turn := 0; turn < maxToolTurns; turn++ {
 		completedResponse, streamErr := w.streamResponse(ctx, req, updates)
 		if streamErr != nil {
-			updates <- WorkerUpdate{
-				WorkerID: w.ID,
-				Type:     UpdateError,
-				Error:    streamErr,
-			}
+			updates <- WorkerUpdate{WorkerID: w.ID, Type: UpdateError, Error: streamErr}
 			w.Status = "error"
 			return
 		}
@@ -102,42 +134,14 @@ func (w *Worker) Run(ctx context.Context, updates chan<- WorkerUpdate) {
 			break
 		}
 
-		// Collect function calls from the completed response
-		var functionCalls []api.OutputItem
-		for _, item := range completedResponse.Output {
-			if item.Type == "function_call" {
-				functionCalls = append(functionCalls, item)
-			}
-		}
-
+		functionCalls := collectFunctionCalls(completedResponse.Output)
 		if len(functionCalls) == 0 {
-			// No tool calls — emit completion and finish
-			updates <- WorkerUpdate{
-				WorkerID: w.ID,
-				Type:     UpdateCompleted,
-				Content:  w.Output,
-				Usage: UsageInfo{
-					InputTokens:  completedResponse.Usage.InputTokens,
-					OutputTokens: completedResponse.Usage.OutputTokens,
-				},
-			}
+			w.emitCompletion(updates, completedResponse)
 			break
 		}
 
-		// Execute each function call and collect results
 		results := w.executeToolCalls(ctx, functionCalls, updates)
-
-		// Build follow-up request with tool results
-		resultsJSON, _ := json.Marshal(results)
-		req = api.CreateResponseRequest{
-			Model:              w.model,
-			Input:              resultsJSON,
-			PreviousResponseID: completedResponse.ID,
-			Reasoning: &api.Reasoning{
-				Effort: Modes[w.Mode].ReasoningEffort,
-			},
-			Stream: true,
-		}
+		req = w.buildFollowUpRequest(results, completedResponse.ID)
 	}
 
 	w.Status = "completed"
