@@ -48,6 +48,40 @@ func NewOrchestrator(
 	}
 }
 
+// launchWorker starts a worker goroutine and signals doneCh on completion.
+func (o *Orchestrator) launchWorker(id string, wg *sync.WaitGroup, doneCh chan<- string) {
+	w := o.Workers[id]
+	if w == nil {
+		doneCh <- id
+		return
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w.Run(context.Background(), o.UpdatesCh)
+		doneCh <- w.ID
+	}()
+}
+
+// coordinateWorkers listens for worker completions and launches newly ready tasks.
+func (o *Orchestrator) coordinateWorkers(dag *dagState, remaining int, wg *sync.WaitGroup, doneCh chan string) {
+	for remaining > 0 {
+		id := <-doneCh
+		remaining--
+
+		w := o.Workers[id]
+		if w != nil && w.Status == "error" {
+			skipped := skipDependents(dag, id, o.Workers, o.UpdatesCh)
+			remaining -= skipped
+			continue
+		}
+
+		for _, readyID := range dag.markCompleted(id) {
+			o.launchWorker(readyID, wg, doneCh)
+		}
+	}
+}
+
 // Dispatch spawns workers for each subtask using topological scheduling.
 func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 	o.mu.Lock()
@@ -60,55 +94,18 @@ func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 	return func() tea.Msg {
 		dag, err := buildDAG(subtasks)
 		if err != nil {
-			o.UpdatesCh <- WorkerUpdate{
-				Type:    UpdateError,
-				Content: err.Error(),
-				Error:   err,
-			}
+			o.UpdatesCh <- WorkerUpdate{Type: UpdateError, Content: err.Error(), Error: err}
 			return nil
 		}
 
 		var wg sync.WaitGroup
 		doneCh := make(chan string, len(subtasks))
 
-		launch := func(id string) {
-			w := o.Workers[id]
-			if w == nil {
-				doneCh <- id
-				return
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				w.Run(context.Background(), o.UpdatesCh)
-				doneCh <- w.ID
-			}()
-		}
-
-		// Start all initially ready tasks
 		for _, id := range dag.readySet() {
-			launch(id)
+			o.launchWorker(id, &wg, doneCh)
 		}
 
-		// Coordinator: listen for completions, enqueue newly ready tasks
-		go func() {
-			remaining := len(subtasks)
-			for remaining > 0 {
-				id := <-doneCh
-				remaining--
-
-				w := o.Workers[id]
-				if w != nil && w.Status == "error" {
-					skipped := skipDependents(dag, id, o.Workers, o.UpdatesCh)
-					remaining -= skipped
-					continue
-				}
-
-				for _, readyID := range dag.markCompleted(id) {
-					launch(readyID)
-				}
-			}
-		}()
+		go o.coordinateWorkers(dag, len(subtasks), &wg, doneCh)
 
 		wg.Wait()
 		return nil
