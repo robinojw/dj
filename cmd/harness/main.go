@@ -110,7 +110,7 @@ func initSkills(cfg config.Config) *skills.Registry {
 }
 
 func initLSP(ctx context.Context, cfg config.Config) *lsp.Client {
-	if !cfg.LSP.Enabled && cfg.LSP.Language != "" {
+	if !cfg.LSP.Enabled {
 		return nil
 	}
 	cwd, _ := os.Getwd()
