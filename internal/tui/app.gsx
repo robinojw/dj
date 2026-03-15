@@ -128,6 +128,8 @@ func NewRootApp(
 		width:          80,
 	}
 
+	a.topBarView = NewTopBar(t, tui.NewState(""), tui.NewState(""), tui.NewState(""))
+
 	// Create child components with callbacks
 	a.chatView = NewChat(t, 80, modeState, modelState, costState, inputTokensState, outputTokensState, activeMCPsState,
 		a.handleSubmit, a.openDiffPager, nil)
@@ -305,13 +307,11 @@ func (a *rootApp) analyzeForMultiAgent(text string, mentionCtx string) {
 }
 
 func (a *rootApp) ensureTopBar() {
-	if a.topBarView != nil {
-		return
+	a.topBarView.branch.Set(resolveGitBranch())
+	a.topBarView.cwd.Set(resolveWorkingDir())
+	if a.topBarView.title.Get() == "" {
+		a.topBarView.title.Set("New Session")
 	}
-	branchState := tui.NewState(resolveGitBranch())
-	cwdState := tui.NewState(resolveWorkingDir())
-	titleState := tui.NewState("New Session")
-	a.topBarView = NewTopBar(a.t, branchState, cwdState, titleState)
 }
 
 func (a *rootApp) openDiffPager(diffs []storedDiff) {
