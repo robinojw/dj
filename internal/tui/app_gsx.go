@@ -229,6 +229,43 @@ func (a *rootApp) onWorkerUpdate(update agents.WorkerUpdate) {
 }
 
 func (a *rootApp) handleSubmit(text string, mentionCtx string) {
+	a.startSingleAgentStream(text, mentionCtx)
+
+	go a.analyzeForMultiAgent(text, mentionCtx)
+}
+
+func (a *rootApp) startSingleAgentStream(text string, mentionCtx string) {
+	modeCfg := modes.Modes[a.modeVal]
+
+	var toolDefs []api.Tool
+	if a.toolRegistry != nil {
+		toolDefs = a.toolRegistry.ToolDefinitions(modeCfg.AllowedTools)
+	}
+
+	instructions := modeCfg.SystemPrompt
+	if mentionCtx != "" {
+		instructions = instructions + "\n\n" + mentionCtx
+	}
+
+	req := api.CreateResponseRequest{
+		Model:        a.model.Get(),
+		Input:        api.MakeStringInput(text),
+		Instructions: instructions,
+		Tools:        toolDefs,
+		Reasoning:    &api.Reasoning{Effort: modeCfg.ReasoningEffort},
+		Stream:       true,
+	}
+
+	if a.debugOverlay.IsVisible() {
+		a.debugOverlay.AddInfo(fmt.Sprintf("Starting stream with model: %s", a.model.Get()))
+	}
+
+	ctx := context.Background()
+	chunks, errs := a.client.Stream(ctx, req)
+	a.chatView.StartStream(chunks, errs)
+}
+
+func (a *rootApp) analyzeForMultiAgent(text string, mentionCtx string) {
 	fullText := text
 	if mentionCtx != "" {
 		fullText = fullText + "\n\n" + mentionCtx
@@ -238,65 +275,39 @@ func (a *rootApp) handleSubmit(text string, mentionCtx string) {
 	analysis, err := router.Analyze(context.Background(), fullText)
 
 	isMultiAgent := err == nil && router.ShouldSpawnTeam(analysis)
-
-	if isMultiAgent {
-		a.orchestrator = agents.NewOrchestrator(
-			a.client, a.skillsRegistry, a.tracker, a.model.Get(),
-		)
-		a.orchestrator.Mode = a.modeVal
-		a.orchestrator.Gate = a.gate
-		a.orchestrator.Registry = a.toolRegistry
-		a.orchestrator.PermReqCh = a.permRequestCh
-		a.orchestrator.Hooks = a.hooks
-		a.orchestrator.Memory = a.memoryMgr
-
-		statuses := make([]AgentStatus, 0, len(analysis.Subtasks))
-		for _, task := range analysis.Subtasks {
-			parentID := ""
-			if len(task.DependsOn) > 0 {
-				parentID = task.DependsOn[0]
-			}
-			statuses = append(statuses, AgentStatus{
-				ID:       task.ID,
-				Name:     task.Description,
-				Status:   "pending",
-				ParentID: parentID,
-			})
-		}
-		a.teamView.SetAgents(statuses)
-		a.pushScreen(ScreenIDTeam)
-
-		go a.orchestrator.Dispatch(context.Background(), analysis.Subtasks)
-	} else {
-		modeCfg := modes.Modes[a.modeVal]
-
-		var toolDefs []api.Tool
-		if a.toolRegistry != nil {
-			toolDefs = a.toolRegistry.ToolDefinitions(modeCfg.AllowedTools)
-		}
-
-		instructions := modeCfg.SystemPrompt
-		if mentionCtx != "" {
-			instructions = instructions + "\n\n" + mentionCtx
-		}
-
-		req := api.CreateResponseRequest{
-			Model:        a.model.Get(),
-			Input:        api.MakeStringInput(text),
-			Instructions: instructions,
-			Tools:        toolDefs,
-			Reasoning:    &api.Reasoning{Effort: modeCfg.ReasoningEffort},
-			Stream:       true,
-		}
-
-		if a.debugOverlay.IsVisible() {
-			a.debugOverlay.AddInfo(fmt.Sprintf("Starting stream with model: %s", a.model.Get()))
-		}
-
-		ctx := context.Background()
-		chunks, errs := a.client.Stream(ctx, req)
-		a.chatView.StartStream(chunks, errs)
+	if !isMultiAgent {
+		return
 	}
+
+	a.chatView.cancelActiveStream()
+
+	a.orchestrator = agents.NewOrchestrator(
+		a.client, a.skillsRegistry, a.tracker, a.model.Get(),
+	)
+	a.orchestrator.Mode = a.modeVal
+	a.orchestrator.Gate = a.gate
+	a.orchestrator.Registry = a.toolRegistry
+	a.orchestrator.PermReqCh = a.permRequestCh
+	a.orchestrator.Hooks = a.hooks
+	a.orchestrator.Memory = a.memoryMgr
+
+	statuses := make([]AgentStatus, 0, len(analysis.Subtasks))
+	for _, task := range analysis.Subtasks {
+		parentID := ""
+		if len(task.DependsOn) > 0 {
+			parentID = task.DependsOn[0]
+		}
+		statuses = append(statuses, AgentStatus{
+			ID:       task.ID,
+			Name:     task.Description,
+			Status:   "pending",
+			ParentID: parentID,
+		})
+	}
+	a.teamView.SetAgents(statuses)
+	a.pushScreen(ScreenIDTeam)
+
+	a.orchestrator.Dispatch(context.Background(), analysis.Subtasks)
 }
 
 func (a *rootApp) openDiffPager(diffs []storedDiff) {
@@ -449,74 +460,72 @@ func (a *rootApp) Render(app *tui.App) *tui.Element {
 		__tui_5 := tui.New(
 			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
 		)
-		__tui_6 := a.topBarView.Render(app)
+		__tui_6 := a.chatView.Render(app)
 		__tui_5.AddChild(__tui_6)
-		__tui_7 := a.chatView.Render(app)
-		__tui_5.AddChild(__tui_7)
 		if a.debugOverlay.IsVisible() {
-			__tui_8 := a.debugOverlay.Render(app)
-			__tui_5.AddChild(__tui_8)
+			__tui_7 := a.debugOverlay.Render(app)
+			__tui_5.AddChild(__tui_7)
 		}
 		if __tui_0 == nil {
 			__tui_0 = __tui_5
 		}
 	} else if a.screen.Get() == ScreenIDTeam {
-		__tui_9 := a.teamView.Render(app)
+		__tui_8 := a.teamView.Render(app)
+		if __tui_0 == nil {
+			__tui_0 = __tui_8
+		}
+	} else if a.screen.Get() == ScreenIDMCP {
+		__tui_9 := a.mcpView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_9
 		}
-	} else if a.screen.Get() == ScreenIDMCP {
-		__tui_10 := a.mcpView.Render(app)
+	} else if a.screen.Get() == ScreenIDSkills {
+		__tui_10 := a.skillsView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_10
 		}
-	} else if a.screen.Get() == ScreenIDSkills {
-		__tui_11 := a.skillsView.Render(app)
+	} else if a.screen.Get() == ScreenIDEnhance {
+		__tui_11 := a.enhanceView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_11
 		}
-	} else if a.screen.Get() == ScreenIDEnhance {
-		__tui_12 := a.enhanceView.Render(app)
+	} else if a.screen.Get() == ScreenIDCheatSheet {
+		__tui_12 := a.cheatSheetView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_12
 		}
-	} else if a.screen.Get() == ScreenIDCheatSheet {
-		__tui_13 := a.cheatSheetView.Render(app)
+	} else if a.screen.Get() == ScreenIDDiffPager {
+		__tui_13 := a.diffPagerView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_13
 		}
-	} else if a.screen.Get() == ScreenIDDiffPager {
-		__tui_14 := a.diffPagerView.Render(app)
-		if __tui_0 == nil {
-			__tui_0 = __tui_14
-		}
 	} else if a.screen.Get() == ScreenIDSplit {
-		__tui_15 := tui.New(
+		__tui_14 := tui.New(
 			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
 			tui.WithHeightPercent(100.00),
 		)
-		__tui_16 := a.topBarView.Render(app)
-		__tui_15.AddChild(__tui_16)
-		__tui_17 := tui.New(
+		__tui_15 := a.topBarView.Render(app)
+		__tui_14.AddChild(__tui_15)
+		__tui_16 := tui.New(
 			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
 			tui.WithHeight(15),
 		)
-		__tui_18 := a.teamView.Render(app)
-		__tui_17.AddChild(__tui_18)
-		__tui_15.AddChild(__tui_17)
-		__tui_19 := tui.New(
+		__tui_17 := a.teamView.Render(app)
+		__tui_16.AddChild(__tui_17)
+		__tui_14.AddChild(__tui_16)
+		__tui_18 := tui.New(
 			tui.WithHR(),
 		)
-		__tui_15.AddChild(__tui_19)
-		__tui_20 := tui.New(
+		__tui_14.AddChild(__tui_18)
+		__tui_19 := tui.New(
 			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
 			tui.WithFlexGrow(1), tui.WithFlexShrink(1),
 		)
-		__tui_21 := a.chatView.Render(app)
-		__tui_20.AddChild(__tui_21)
-		__tui_15.AddChild(__tui_20)
+		__tui_20 := a.chatView.Render(app)
+		__tui_19.AddChild(__tui_20)
+		__tui_14.AddChild(__tui_19)
 		if __tui_0 == nil {
-			__tui_0 = __tui_15
+			__tui_0 = __tui_14
 		}
 	}
 

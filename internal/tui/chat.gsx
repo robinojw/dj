@@ -16,9 +16,7 @@ import (
 type chat struct {
 	app          *tui.App
 	textareaRef  *tui.Ref
-	scrollRef    *tui.Ref
-	scrollY      *tui.State[int]
-	sticky       *tui.State[bool]
+	streamWriter *tui.StreamWriter
 	streaming    *tui.State[bool]
 	chatMessages *tui.State[[]chatMsg]
 	eventCh      chan streamEvent
@@ -58,9 +56,6 @@ func NewChat(
 ) *chat {
 	return &chat{
 		textareaRef:   tui.NewRef(),
-		scrollRef:     tui.NewRef(),
-		scrollY:       tui.NewState(0),
-		sticky:        tui.NewState(true),
 		streaming:     tui.NewState(false),
 		chatMessages:  tui.NewState([]chatMsg{}),
 		eventCh:       make(chan streamEvent, 100),
@@ -92,36 +87,6 @@ func (c *chat) Watchers() []tui.Watcher {
 	}
 }
 
-func (c *chat) scrollToBottom() {
-	if el := c.scrollRef.El(); el != nil {
-		_, maxY := el.MaxScroll()
-		c.scrollY.Set(maxY + 1)
-	}
-}
-
-func (c *chat) scrollBy(delta int) {
-	el := c.scrollRef.El()
-	if el == nil {
-		return
-	}
-	_, maxY := el.MaxScroll()
-	newY := c.scrollY.Get() + delta
-	if newY < 0 {
-		newY = 0
-	}
-	if newY > maxY {
-		newY = maxY
-	}
-	c.scrollY.Set(newY)
-	c.sticky.Set(newY >= maxY)
-}
-
-func (c *chat) autoScroll() {
-	if c.sticky.Get() {
-		c.scrollToBottom()
-	}
-}
-
 func (c *chat) onStreamEvent(ev streamEvent) {
 	if !c.streaming.Get() && ev.Type == eventText {
 		return
@@ -137,20 +102,36 @@ func (c *chat) onStreamEvent(ev streamEvent) {
 			}
 			return append(msgs, chatMsg{Kind: chatMsgAgent, Content: ev.Delta, Timestamp: time.Now()})
 		})
-		c.autoScroll()
+		if c.app != nil {
+			if c.streamWriter == nil {
+				c.streamWriter = c.app.StreamAbove()
+				c.streamWriter.WriteStyled("DJ: ", c.t.TuiPrimaryStyle())
+			}
+			c.streamWriter.Write([]byte(ev.Delta))
+		}
 
 	case eventDone:
+		if c.streamWriter != nil {
+			c.streamWriter.Close()
+			c.streamWriter = nil
+		}
 		c.inputTokens.Update(func(v int) int { return v + ev.Usage.InputTokens })
 		c.outputTokens.Update(func(v int) int { return v + ev.Usage.OutputTokens })
 		c.streaming.Set(false)
 
 	case eventError:
+		if c.streamWriter != nil {
+			c.streamWriter.Close()
+			c.streamWriter = nil
+		}
 		c.chatMessages.Update(func(msgs []chatMsg) []chatMsg {
 			return append(msgs, chatMsg{Kind: chatMsgError, Content: ev.Err.Error(), Timestamp: time.Now()})
 		})
+		if c.app != nil {
+			c.app.PrintAboveln("Error: %s", ev.Err.Error())
+		}
 		c.apiMessages = append(c.apiMessages, chatMessage{Role: "assistant", Content: "Error: " + ev.Err.Error()})
 		c.streaming.Set(false)
-		c.autoScroll()
 
 	case eventDiff:
 		c.chatMessages.Update(func(msgs []chatMsg) []chatMsg {
@@ -161,12 +142,15 @@ func (c *chat) onStreamEvent(ev streamEvent) {
 				Timestamp: ev.Timestamp,
 			})
 		})
+		summary := formatDiffSummary(ev.FilePath, ev.DiffText)
+		if c.app != nil {
+			c.app.PrintAboveln("%s", summary)
+		}
 		c.diffs = append(c.diffs, storedDiff{
 			FilePath:  ev.FilePath,
 			DiffLines: strings.Split(ev.DiffText, "\n"),
 			Timestamp: ev.Timestamp,
 		})
-		c.autoScroll()
 	}
 }
 
@@ -180,7 +164,9 @@ func (c *chat) submit(text string) {
 	c.chatMessages.Update(func(msgs []chatMsg) []chatMsg {
 		return append(msgs, chatMsg{Kind: chatMsgUser, Content: text, Timestamp: time.Now()})
 	})
-	c.autoScroll()
+	if c.app != nil {
+		c.app.PrintAboveln("You: %s", text)
+	}
 
 	if isFirstMessage && c.onTitleChange != nil {
 		title := text
@@ -218,6 +204,10 @@ func (c *chat) cancelActiveStream() {
 		c.cancelStream()
 		c.cancelStream = nil
 	}
+	if c.streamWriter != nil {
+		c.streamWriter.Close()
+		c.streamWriter = nil
+	}
 }
 
 // AppendToolCallBlock adds a tool call message from a worker agent.
@@ -225,7 +215,9 @@ func (c *chat) AppendToolCallBlock(workerID, content string) {
 	c.chatMessages.Update(func(msgs []chatMsg) []chatMsg {
 		return append(msgs, chatMsg{Kind: chatMsgToolCall, WorkerID: workerID, Content: content, Timestamp: time.Now()})
 	})
-	c.autoScroll()
+	if c.app != nil {
+		c.app.PrintAboveln("[%s] Tool: %s", workerID, content)
+	}
 }
 
 // AppendToolResultBlock adds a tool result message from a worker agent.
@@ -245,12 +237,15 @@ func (c *chat) AppendDiffBlock(diff *agents.DiffInfo) {
 			Timestamp: diff.Timestamp,
 		})
 	})
+	summary := formatDiffSummary(diff.FilePath, diff.DiffText)
+	if c.app != nil {
+		c.app.PrintAboveln("%s", summary)
+	}
 	c.diffs = append(c.diffs, storedDiff{
 		FilePath:  diff.FilePath,
 		DiffLines: strings.Split(diff.DiffText, "\n"),
 		Timestamp: diff.Timestamp,
 	})
-	c.autoScroll()
 }
 
 // LoadSession replaces the message list with a worker's stored session.
@@ -260,7 +255,18 @@ func (c *chat) LoadSession(session *agents.WorkerSession) {
 		msgs = append(msgs, sessionTurnToChatMsg(turn))
 	}
 	c.chatMessages.Set(msgs)
-	c.scrollToBottom()
+	if c.app != nil {
+		for _, turn := range session.Turns {
+			switch turn.Kind {
+			case agents.TurnText:
+				c.app.PrintAboveln("DJ: %s", turn.Content)
+			case agents.TurnToolCall:
+				c.app.PrintAboveln("[Tool] %s: %s", turn.ToolName, turn.Content)
+			case agents.TurnToolResult:
+				c.app.PrintAboveln("[Result] %s", truncateMsg(turn.Content, 300))
+			}
+		}
+	}
 }
 
 func sessionTurnToChatMsg(turn agents.SessionTurn) chatMsg {
@@ -301,25 +307,14 @@ func (c *chat) KeyMap() tui.KeyMap {
 				c.onOpenDiffs(c.diffs)
 			}
 		}),
-		tui.OnKey(tui.KeyPageUp, func(ke tui.KeyEvent) {
-			c.scrollBy(-10)
-		}),
-		tui.OnKey(tui.KeyPageDown, func(ke tui.KeyEvent) {
-			c.scrollBy(10)
-		}),
 	}
 }
 
 templ (c *chat) Render() {
-	<div class="flex-col h-full">
-		<div class="overflow-y-scroll flex-1" ref={c.scrollRef} scrollOffset={0, c.scrollY.Get()}>
-			for _, msg := range c.chatMessages.Get() {
-				@RenderChatMsg(c.t, msg)
-			}
-			if c.streaming.Get() {
-				<span class="text-dim">{"Streaming..."}</span>
-			}
-		</div>
+	<div class="flex-col">
+		if c.streaming.Get() {
+			<span class="text-dim">{"Streaming... (Esc to cancel)"}</span>
+		}
 		<textarea ref={c.textareaRef} autoFocus={true}
 			placeholder="Send a message... (/skills name)"
 			width={c.width - 2}
