@@ -42,6 +42,31 @@ type DiffInfo struct {
 	Timestamp time.Time
 }
 
+// TurnKind identifies the type of a session turn.
+type TurnKind int
+
+const (
+	TurnText       TurnKind = iota
+	TurnToolCall
+	TurnToolResult
+	TurnDiff
+	TurnError
+)
+
+// SessionTurn is one unit of output in a worker's session.
+type SessionTurn struct {
+	Kind      TurnKind
+	Content   string
+	ToolName  string
+	Timestamp time.Time
+}
+
+// WorkerSession stores the full message history for a single worker agent.
+type WorkerSession struct {
+	WorkerID string
+	Turns    []SessionTurn
+}
+
 // Subtask is a unit of work assigned to a worker agent.
 type Subtask struct {
 	ID          string

@@ -4,6 +4,8 @@
 package tui
 
 import (
+	"fmt"
+
 	tui "github.com/grindlemire/go-tui"
 	"github.com/robinojw/dj/internal/tui/theme"
 )
@@ -11,25 +13,29 @@ import (
 type AgentStatus struct {
 	ID       string
 	Name     string
-	Status   string // "running", "idle", "completed", "error", "skipped"
+	Status   string
 	ParentID string
 	Output   string
 }
 
 type teamScreen struct {
-	app      *tui.App
-	agents   *tui.State[[]AgentStatus]
-	selected *tui.State[int]
-	onClose  func()
-	t        *theme.Theme
+	app         *tui.App
+	agents      *tui.State[[]AgentStatus]
+	cursor      *tui.State[cursorPos]
+	onClose     func()
+	onOpenAgent func(agentID string)
+	onSplitView func()
+	t           *theme.Theme
 }
 
-func NewTeamScreen(t *theme.Theme, onClose func()) *teamScreen {
+func NewTeamScreen(t *theme.Theme, onClose func(), onOpenAgent func(string), onSplitView func()) *teamScreen {
 	return &teamScreen{
-		agents:   tui.NewState([]AgentStatus{}),
-		selected: tui.NewState(0),
-		onClose:  onClose,
-		t:        t,
+		agents:      tui.NewState([]AgentStatus{}),
+		cursor:      tui.NewState(cursorPos{}),
+		onClose:     onClose,
+		onOpenAgent: onOpenAgent,
+		onSplitView: onSplitView,
+		t:           t,
 	}
 }
 
@@ -37,61 +43,173 @@ func (s *teamScreen) SetAgents(agents []AgentStatus) {
 	s.agents.Set(agents)
 }
 
+func (s *teamScreen) SetAgentStatus(workerID, status string) {
+	s.agents.Update(func(agents []AgentStatus) []AgentStatus {
+		for i, agent := range agents {
+			if agent.ID == workerID {
+				agents[i].Status = status
+			}
+		}
+		return agents
+	})
+}
+
+func (s *teamScreen) AppendAgentDelta(workerID, delta string) {
+	s.agents.Update(func(agents []AgentStatus) []AgentStatus {
+		for i, agent := range agents {
+			if agent.ID == workerID {
+				agents[i].Output += delta
+				if agents[i].Status != "running" {
+					agents[i].Status = "running"
+				}
+			}
+		}
+		return agents
+	})
+}
+
+func (s *teamScreen) AppendToolCall(workerID, content string) {
+	s.agents.Update(func(agents []AgentStatus) []AgentStatus {
+		for i, agent := range agents {
+			if agent.ID == workerID {
+				agents[i].Output += "\n[Tool] " + content
+			}
+		}
+		return agents
+	})
+}
+
+func (s *teamScreen) AppendToolResult(workerID, content string) {
+	s.agents.Update(func(agents []AgentStatus) []AgentStatus {
+		for i, agent := range agents {
+			if agent.ID == workerID {
+				agents[i].Output += "\n[Result] " + content
+			}
+		}
+		return agents
+	})
+}
+
 func agentStatusIcon(status string) string {
 	switch status {
 	case "running":
-		return "⏳"
+		return ">"
 	case "completed":
-		return "✅"
+		return "+"
 	case "error":
-		return "❌"
+		return "!"
 	case "skipped":
-		return "⏭️"
+		return "-"
 	default:
-		return "💤"
+		return "."
 	}
+}
+
+func (s *teamScreen) cursorAgentID() string {
+	layers := buildDAGLayers(s.agents.Get())
+	pos := s.cursor.Get()
+	if pos.Col < len(layers) && pos.Row < len(layers[pos.Col]) {
+		return layers[pos.Col][pos.Row].ID
+	}
+	return ""
 }
 
 func (s *teamScreen) KeyMap() tui.KeyMap {
 	return tui.KeyMap{
-		tui.OnKeyStop(tui.KeyEscape, func(ke tui.KeyEvent) {
-			s.onClose()
-		}),
+		tui.OnKeyStop(tui.KeyEscape, func(ke tui.KeyEvent) { s.onClose() }),
 		tui.OnKey(tui.KeyUp, func(ke tui.KeyEvent) {
-			s.selected.Update(func(v int) int {
-				if v > 0 {
-					return v - 1
+			s.cursor.Update(func(p cursorPos) cursorPos {
+				if p.Row > 0 {
+					p.Row--
 				}
-				return 0
-			})
-		}),
-		tui.OnRuneStop('k', func(ke tui.KeyEvent) {
-			s.selected.Update(func(v int) int {
-				if v > 0 {
-					return v - 1
-				}
-				return 0
+				return p
 			})
 		}),
 		tui.OnKey(tui.KeyDown, func(ke tui.KeyEvent) {
-			agents := s.agents.Get()
-			s.selected.Update(func(v int) int {
-				if v < len(agents)-1 {
-					return v + 1
+			layers := buildDAGLayers(s.agents.Get())
+			s.cursor.Update(func(p cursorPos) cursorPos {
+				if p.Col < len(layers) {
+					maxRow := len(layers[p.Col]) - 1
+					if p.Row < maxRow {
+						p.Row++
+					}
 				}
-				return v
+				return p
+			})
+		}),
+		tui.OnKey(tui.KeyLeft, func(ke tui.KeyEvent) {
+			s.cursor.Update(func(p cursorPos) cursorPos {
+				if p.Col > 0 {
+					p.Col--
+					p.Row = 0
+				}
+				return p
+			})
+		}),
+		tui.OnKey(tui.KeyRight, func(ke tui.KeyEvent) {
+			layers := buildDAGLayers(s.agents.Get())
+			s.cursor.Update(func(p cursorPos) cursorPos {
+				if p.Col < len(layers)-1 {
+					p.Col++
+					p.Row = 0
+				}
+				return p
+			})
+		}),
+		tui.OnKeyStop(tui.KeyEnter, func(ke tui.KeyEvent) {
+			if agentID := s.cursorAgentID(); agentID != "" && s.onOpenAgent != nil {
+				s.onOpenAgent(agentID)
+			}
+		}),
+		tui.OnRuneStop('/', func(ke tui.KeyEvent) {
+			if s.onSplitView != nil {
+				s.onSplitView()
+			}
+		}),
+		tui.OnRuneStop('k', func(ke tui.KeyEvent) {
+			s.cursor.Update(func(p cursorPos) cursorPos {
+				if p.Row > 0 {
+					p.Row--
+				}
+				return p
 			})
 		}),
 		tui.OnRuneStop('j', func(ke tui.KeyEvent) {
-			agents := s.agents.Get()
-			s.selected.Update(func(v int) int {
-				if v < len(agents)-1 {
-					return v + 1
+			layers := buildDAGLayers(s.agents.Get())
+			s.cursor.Update(func(p cursorPos) cursorPos {
+				if p.Col < len(layers) {
+					maxRow := len(layers[p.Col]) - 1
+					if p.Row < maxRow {
+						p.Row++
+					}
 				}
-				return v
+				return p
+			})
+		}),
+		tui.OnRuneStop('h', func(ke tui.KeyEvent) {
+			s.cursor.Update(func(p cursorPos) cursorPos {
+				if p.Col > 0 {
+					p.Col--
+					p.Row = 0
+				}
+				return p
+			})
+		}),
+		tui.OnRuneStop('l', func(ke tui.KeyEvent) {
+			layers := buildDAGLayers(s.agents.Get())
+			s.cursor.Update(func(p cursorPos) cursorPos {
+				if p.Col < len(layers)-1 {
+					p.Col++
+					p.Row = 0
+				}
+				return p
 			})
 		}),
 	}
+}
+
+func agentLabel(agent AgentStatus) string {
+	return fmt.Sprintf("[%s] %s (%s)", agentStatusIcon(agent.Status), agent.Name, agent.Status)
 }
 
 func (s *teamScreen) Render(app *tui.App) *tui.Element {
@@ -102,7 +220,7 @@ func (s *teamScreen) Render(app *tui.App) *tui.Element {
 		tui.WithPadding(1),
 	)
 	__tui_1 := tui.New(
-		tui.WithText("  Team View                                Ctrl+T  "),
+		tui.WithText("  Team View  (Enter: open session  /: split  Esc: back)"),
 		tui.WithTextStyle(tui.NewStyle().Foreground(tui.Cyan).Bold()),
 	)
 	__tui_0.AddChild(__tui_1)
@@ -112,61 +230,77 @@ func (s *teamScreen) Render(app *tui.App) *tui.Element {
 	__tui_0.AddChild(__tui_2)
 	if len(s.agents.Get()) == 0 {
 		__tui_3 := tui.New(
-			tui.WithText("  No agents running. Start a complex task to see the team view."),
+			tui.WithText("  No agents running."),
 			tui.WithTextStyle(tui.NewStyle().Dim()),
 		)
 		__tui_0.AddChild(__tui_3)
 	} else {
 		__tui_4 := tui.New(
-			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
+			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Row),
+			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Row),
+			tui.WithGap(4),
+			tui.WithFlexGrow(1), tui.WithFlexShrink(1),
 		)
-		for i, agent := range s.agents.Get() {
-			_ = i
-			if s.selected.Get() == i {
-				__tui_5 := tui.New(
-					tui.WithText("● "+agentStatusIcon(agent.Status)+" "+agent.Name+" ["+agent.Status+"]"),
-					tui.WithTextStyle(tui.NewStyle().Foreground(tui.Cyan).Bold()),
-				)
-				__tui_4.AddChild(__tui_5)
-			} else {
-				__tui_6 := tui.New(
-					tui.WithText("  "+agentStatusIcon(agent.Status)+" "+agent.Name+" ["+agent.Status+"]"),
-					tui.WithTextStyle(tui.NewStyle().Dim()),
-				)
-				__tui_4.AddChild(__tui_6)
+		for col, layer := range buildDAGLayers(s.agents.Get()) {
+			_ = col
+			__tui_5 := tui.New(
+				tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
+				tui.WithGap(1),
+			)
+			for row, agent := range layer {
+				_ = row
+				if s.cursor.Get().Col == col && s.cursor.Get().Row == row {
+					__tui_6 := tui.New(
+						tui.WithBorder(tui.BorderRounded),
+						tui.WithBorderStyle(tui.NewStyle().Foreground(tui.Cyan)),
+						tui.WithPadding(1),
+						tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
+						tui.WithWidth(24),
+					)
+					__tui_7 := tui.New(
+						tui.WithText(agent.Name),
+						tui.WithTextStyle(tui.NewStyle().Foreground(tui.Cyan).Bold()),
+					)
+					__tui_6.AddChild(__tui_7)
+					__tui_8 := tui.New(
+						tui.WithText(agentStatusIcon(agent.Status)+" "+agent.Status),
+						tui.WithTextStyle(tui.NewStyle().Foreground(tui.Cyan)),
+					)
+					__tui_6.AddChild(__tui_8)
+					__tui_5.AddChild(__tui_6)
+				} else {
+					__tui_9 := tui.New(
+						tui.WithBorder(tui.BorderRounded),
+						tui.WithPadding(1),
+						tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
+						tui.WithWidth(24),
+					)
+					__tui_10 := tui.New(
+						tui.WithText(agent.Name),
+						tui.WithTextStyle(tui.NewStyle().Bold()),
+					)
+					__tui_9.AddChild(__tui_10)
+					__tui_11 := tui.New(
+						tui.WithText(agentStatusIcon(agent.Status)+" "+agent.Status),
+						tui.WithTextStyle(tui.NewStyle().Dim()),
+					)
+					__tui_9.AddChild(__tui_11)
+					__tui_5.AddChild(__tui_9)
+				}
 			}
+			__tui_4.AddChild(__tui_5)
 		}
 		__tui_0.AddChild(__tui_4)
-		__tui_7 := tui.New(
-			tui.WithHR(),
-		)
-		__tui_0.AddChild(__tui_7)
-		__tui_8 := tui.New(
-			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
-		)
-		__tui_9 := tui.New(
-			tui.WithText("Output:"),
-			tui.WithTextStyle(tui.NewStyle().Foreground(tui.Cyan).Bold()),
-		)
-		__tui_8.AddChild(__tui_9)
-		if s.selected.Get() < len(s.agents.Get()) {
-			__tui_10 := tui.New(
-				tui.WithText(s.agents.Get()[s.selected.Get()].Output),
-				tui.WithTextStyle(tui.NewStyle().Dim()),
-			)
-			__tui_8.AddChild(__tui_10)
-		}
-		__tui_0.AddChild(__tui_8)
 	}
-	__tui_11 := tui.New(
+	__tui_12 := tui.New(
 		tui.WithHR(),
 	)
-	__tui_0.AddChild(__tui_11)
-	__tui_12 := tui.New(
-		tui.WithText("  [↑/↓] navigate  [Esc] back"),
+	__tui_0.AddChild(__tui_12)
+	__tui_13 := tui.New(
+		tui.WithText("  [h/l] columns  [j/k] rows  [Enter] open  [/] split"),
 		tui.WithTextStyle(tui.NewStyle().Dim()),
 	)
-	__tui_0.AddChild(__tui_12)
+	__tui_0.AddChild(__tui_13)
 
 	return __tui_0
 }
@@ -187,8 +321,8 @@ func (s *teamScreen) BindApp(app *tui.App) {
 	if s.agents != nil {
 		s.agents.BindApp(app)
 	}
-	if s.selected != nil {
-		s.selected.BindApp(app)
+	if s.cursor != nil {
+		s.cursor.BindApp(app)
 	}
 }
 

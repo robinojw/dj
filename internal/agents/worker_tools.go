@@ -55,6 +55,12 @@ func (w *Worker) executeToolCalls(
 			}
 		}
 
+		w.Session.Turns = append(w.Session.Turns, SessionTurn{
+			Kind:      TurnToolResult,
+			Content:   output,
+			Timestamp: time.Now(),
+		})
+
 		updates <- WorkerUpdate{
 			WorkerID: w.ID,
 			Type:     UpdateToolResult,

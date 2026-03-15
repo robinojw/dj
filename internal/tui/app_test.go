@@ -14,7 +14,7 @@ import (
 
 func TestNewRootApp_DoesNotPanic(t *testing.T) {
 	th := theme.DefaultTheme()
-	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
+	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil, nil, nil)
 	if app == nil {
 		t.Fatal("expected non-nil root app")
 	}
@@ -22,7 +22,7 @@ func TestNewRootApp_DoesNotPanic(t *testing.T) {
 
 func TestScreenNavigation(t *testing.T) {
 	th := theme.DefaultTheme()
-	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
+	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil, nil, nil)
 
 	if app.screen.Get() != ScreenIDChat {
 		t.Fatalf("expected ScreenIDChat, got %d", app.screen.Get())
@@ -32,7 +32,7 @@ func TestScreenNavigation(t *testing.T) {
 func TestCycleModel(t *testing.T) {
 	th := theme.DefaultTheme()
 	tracker := api.NewTracker("gpt-5.4")
-	app := NewRootApp(th, nil, tracker, "gpt-5.4", config.Config{}, nil, nil)
+	app := NewRootApp(th, nil, tracker, "gpt-5.4", config.Config{}, nil, nil, nil, nil)
 
 	initial := app.model.Get()
 	app.cycleModel()
@@ -45,7 +45,7 @@ func TestCycleModel(t *testing.T) {
 
 func TestCycleMode(t *testing.T) {
 	th := theme.DefaultTheme()
-	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
+	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil, nil, nil)
 
 	if app.modeVal != modes.ModeConfirm {
 		t.Fatalf("expected ModeConfirm, got %d", app.modeVal)
@@ -67,7 +67,7 @@ func TestCycleMode(t *testing.T) {
 
 func TestPushPopScreen(t *testing.T) {
 	th := theme.DefaultTheme()
-	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
+	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil, nil, nil)
 
 	if app.screen.Get() != ScreenIDChat {
 		t.Fatalf("expected ScreenIDChat")
@@ -100,7 +100,7 @@ func TestNewChat_DoesNotPanic(t *testing.T) {
 	mcps := tui.NewState([]string{})
 
 	c := NewChat(th, 80, mode, model, cost, input, output, mcps,
-		func(string, string) {}, func([]storedDiff) {})
+		func(string, string) {}, func([]storedDiff) {}, func(string) {})
 	if c == nil {
 		t.Fatal("expected non-nil chat")
 	}
@@ -116,7 +116,7 @@ func TestChat_StartStreamReusesChannel(t *testing.T) {
 	mcps := tui.NewState([]string{})
 
 	c := NewChat(th, 80, mode, model, cost, input, output, mcps,
-		func(string, string) {}, func([]storedDiff) {})
+		func(string, string) {}, func([]storedDiff) {}, func(string) {})
 
 	originalCh := c.eventCh
 
@@ -144,7 +144,7 @@ func TestChat_CancelActiveStreamCleansUp(t *testing.T) {
 	mcps := tui.NewState([]string{})
 
 	c := NewChat(th, 80, mode, model, cost, input, output, mcps,
-		func(string, string) {}, func([]storedDiff) {})
+		func(string, string) {}, func([]storedDiff) {}, func(string) {})
 
 	// Start a stream with blocking channels
 	chunks := make(chan api.ResponseChunk)
@@ -172,14 +172,14 @@ func TestChat_OnStreamEventIgnoresTextAfterCancel(t *testing.T) {
 	mcps := tui.NewState([]string{})
 
 	c := NewChat(th, 80, mode, model, cost, input, output, mcps,
-		func(string, string) {}, func([]storedDiff) {})
+		func(string, string) {}, func([]storedDiff) {}, func(string) {})
 
 	// streaming is false (not set) — text events should be ignored
 	c.onStreamEvent(streamEvent{Type: eventText, Delta: "ignored"})
 
-	// No panic, buffer stays empty
-	if c.streamBuf.Len() != 0 {
-		t.Fatal("expected streamBuf to remain empty when not streaming")
+	// No panic and streaming remains false
+	if c.streaming.Get() {
+		t.Fatal("expected streaming to remain false after ignored event")
 	}
 }
 
@@ -253,9 +253,9 @@ func TestDebugOverlay_AddAndToggle(t *testing.T) {
 	}
 }
 
-func TestRootApp_HandleWorkerUpdate_DiffResult(t *testing.T) {
+func TestRootApp_OnWorkerUpdate_DiffResult(t *testing.T) {
 	th := theme.DefaultTheme()
-	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
+	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil, nil, nil)
 
 	update := agents.WorkerUpdate{
 		Type: agents.UpdateDiffResult,
@@ -266,25 +266,20 @@ func TestRootApp_HandleWorkerUpdate_DiffResult(t *testing.T) {
 		},
 	}
 
-	app.HandleWorkerUpdate(update)
+	app.onWorkerUpdate(update)
 
-	// Should have sent a diff event to the chat's eventCh
-	select {
-	case ev := <-app.chatView.eventCh:
-		if ev.Type != eventDiff {
-			t.Fatalf("expected eventDiff, got %d", ev.Type)
-		}
-		if ev.FilePath != "main.go" {
-			t.Fatalf("expected 'main.go', got %q", ev.FilePath)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("expected diff event in chat eventCh")
+	// Should have stored a diff in chat's diffs
+	if len(app.chatView.diffs) != 1 {
+		t.Fatalf("expected 1 diff, got %d", len(app.chatView.diffs))
+	}
+	if app.chatView.diffs[0].FilePath != "main.go" {
+		t.Fatalf("expected 'main.go', got %q", app.chatView.diffs[0].FilePath)
 	}
 }
 
 func TestRootApp_PermRequestCh(t *testing.T) {
 	th := theme.DefaultTheme()
-	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
+	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil, nil, nil)
 
 	ch := app.PermRequestCh()
 	if ch == nil {
@@ -294,7 +289,7 @@ func TestRootApp_PermRequestCh(t *testing.T) {
 
 func TestRootApp_HandleSubmit_IncludesMentionCtx(t *testing.T) {
 	th := theme.DefaultTheme()
-	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil)
+	app := NewRootApp(th, nil, nil, "gpt-5.4", config.Config{}, nil, nil, nil, nil)
 
 	// Verify mentionCtx is appended to instructions
 	// We can't easily test the API call, but we can verify the function doesn't panic

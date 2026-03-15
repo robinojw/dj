@@ -30,6 +30,7 @@ const (
 	ScreenIDSkills
 	ScreenIDCheatSheet
 	ScreenIDDiffPager
+	ScreenIDSplit
 )
 
 type rootApp struct {
@@ -60,6 +61,7 @@ type rootApp struct {
 	// Multi-agent orchestrator — set when a multi-agent task is dispatched
 	orchestrator  *agents.Orchestrator
 	activeAgentID *tui.State[string]
+	splitFocus    *tui.State[string]
 
 	// Permission request channel — workers send requests here
 	permRequestCh chan modes.PermissionRequest
@@ -107,6 +109,7 @@ func NewRootApp(
 	a := &rootApp{
 		screen:         tui.NewState(ScreenIDChat),
 		activeAgentID:  tui.NewState(""),
+		splitFocus:     tui.NewState("team"),
 		mode:           modeState,
 		model:          modelState,
 		cost:           costState,
@@ -135,9 +138,24 @@ func NewRootApp(
 
 	// Create child components with callbacks
 	a.chatView = NewChat(t, 80, modeState, modelState, costState, inputTokensState, outputTokensState, activeMCPsState,
-		a.handleSubmit, a.openDiffPager)
+		a.handleSubmit, a.openDiffPager, func(title string) {
+			titleState.Set(title)
+		})
 	a.cheatSheetView = NewCheatSheet(t, a.popScreenFn)
-	a.teamView = NewTeamScreen(t, a.popScreenFn)
+	a.teamView = NewTeamScreen(t, a.popScreenFn,
+		func(agentID string) {
+			a.activeAgentID.Set(agentID)
+			if a.orchestrator != nil {
+				if w := a.orchestrator.GetWorker(agentID); w != nil && w.Session != nil {
+					a.chatView.LoadSession(w.Session)
+				}
+			}
+			a.screen.Set(ScreenIDChat)
+		},
+		func() {
+			a.pushScreen(ScreenIDSplit)
+		},
+	)
 	a.enhanceView = NewEnhanceScreen(t, a.popScreenFn, nil)
 	a.mcpView = NewMCPManager(t, a.popScreenFn, nil)
 	a.skillsView = NewSkillBrowser(t, a.popScreenFn)
@@ -385,6 +403,27 @@ func (a *rootApp) KeyMap() tui.KeyMap {
 		)
 	}
 
+	if a.screen.Get() == ScreenIDSplit {
+		km = append(km,
+			tui.OnKeyStop(tui.KeyTab, func(ke tui.KeyEvent) {
+				a.splitFocus.Update(func(f string) string {
+					if f == "team" {
+						return "chat"
+					}
+					return "team"
+				})
+			}),
+			tui.OnKey(tui.KeyCtrlT, func(ke tui.KeyEvent) {
+				a.screen.Set(ScreenIDChat)
+			}),
+		)
+		if a.splitFocus.Get() == "team" {
+			km = append(km, a.teamView.KeyMap()...)
+		} else {
+			km = append(km, a.chatView.KeyMap()...)
+		}
+	}
+
 	return km
 }
 
@@ -450,6 +489,34 @@ func (a *rootApp) Render(app *tui.App) *tui.Element {
 		__tui_14 := a.diffPagerView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_14
+		}
+	} else if a.screen.Get() == ScreenIDSplit {
+		__tui_15 := tui.New(
+			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
+			tui.WithHeightPercent(100.00),
+		)
+		__tui_16 := a.topBarView.Render(app)
+		__tui_15.AddChild(__tui_16)
+		__tui_17 := tui.New(
+			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
+			tui.WithHeight(15),
+		)
+		__tui_18 := a.teamView.Render(app)
+		__tui_17.AddChild(__tui_18)
+		__tui_15.AddChild(__tui_17)
+		__tui_19 := tui.New(
+			tui.WithHR(),
+		)
+		__tui_15.AddChild(__tui_19)
+		__tui_20 := tui.New(
+			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
+			tui.WithFlexGrow(1), tui.WithFlexShrink(1),
+		)
+		__tui_21 := a.chatView.Render(app)
+		__tui_20.AddChild(__tui_21)
+		__tui_15.AddChild(__tui_20)
+		if __tui_0 == nil {
+			__tui_0 = __tui_15
 		}
 	}
 
@@ -519,6 +586,9 @@ func (a *rootApp) BindApp(app *tui.App) {
 	}
 	if a.activeAgentID != nil {
 		a.activeAgentID.BindApp(app)
+	}
+	if a.splitFocus != nil {
+		a.splitFocus.BindApp(app)
 	}
 	if binder, ok := any(a.chatView).(tui.AppBinder); ok {
 		binder.BindApp(app)
