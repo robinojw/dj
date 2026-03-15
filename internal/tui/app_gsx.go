@@ -131,16 +131,9 @@ func NewRootApp(
 		width:          80,
 	}
 
-	branchState := tui.NewState(resolveGitBranch())
-	cwdState := tui.NewState(resolveWorkingDir())
-	titleState := tui.NewState("New Session")
-	a.topBarView = NewTopBar(t, branchState, cwdState, titleState)
-
 	// Create child components with callbacks
 	a.chatView = NewChat(t, 80, modeState, modelState, costState, inputTokensState, outputTokensState, activeMCPsState,
-		a.handleSubmit, a.openDiffPager, func(title string) {
-			titleState.Set(title)
-		})
+		a.handleSubmit, a.openDiffPager, nil)
 	a.cheatSheetView = NewCheatSheet(t, a.popScreenFn)
 	a.teamView = NewTeamScreen(t, a.popScreenFn,
 		func(agentID string) {
@@ -153,6 +146,7 @@ func NewRootApp(
 			a.screen.Set(ScreenIDChat)
 		},
 		func() {
+			a.ensureTopBar()
 			a.pushScreen(ScreenIDSplit)
 		},
 	)
@@ -308,6 +302,16 @@ func (a *rootApp) analyzeForMultiAgent(text string, mentionCtx string) {
 	a.pushScreen(ScreenIDTeam)
 
 	a.orchestrator.Dispatch(context.Background(), analysis.Subtasks)
+}
+
+func (a *rootApp) ensureTopBar() {
+	if a.topBarView != nil {
+		return
+	}
+	branchState := tui.NewState(resolveGitBranch())
+	cwdState := tui.NewState(resolveWorkingDir())
+	titleState := tui.NewState("New Session")
+	a.topBarView = NewTopBar(a.t, branchState, cwdState, titleState)
 }
 
 func (a *rootApp) openDiffPager(diffs []storedDiff) {
