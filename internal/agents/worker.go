@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/hooks"
@@ -22,8 +23,9 @@ type Worker struct {
 	Task         Subtask
 	Status       string // "pending", "running", "completed", "error", "skipped"
 	Output       string
+	Session      *WorkerSession
 	Mode         AgentMode
-	client       *api.ResponsesClient
+	client       api.Client
 	skills       *skills.Registry
 	memory       *memory.Manager
 	model        string
@@ -38,7 +40,7 @@ type Worker struct {
 
 func NewWorker(
 	task Subtask,
-	client *api.ResponsesClient,
+	client api.Client,
 	skillsRegistry *skills.Registry,
 	model string,
 	parentID string,
@@ -50,14 +52,15 @@ func NewWorker(
 	hooks *hooks.Runner,
 ) *Worker {
 	return &Worker{
-		ID:        task.ID,
-		Task:      task,
-		Status:    "pending",
-		Mode:      mode,
-		client:    client,
-		skills:    skillsRegistry,
-		memory:    mem,
-		model:     model,
+		ID:      task.ID,
+		Task:    task,
+		Status:  "pending",
+		Session: &WorkerSession{WorkerID: task.ID},
+		Mode:    mode,
+		client:  client,
+		skills:  skillsRegistry,
+		memory:  mem,
+		model:   model,
 		parentID:  parentID,
 		gate:      gate,
 		registry:  registry,
@@ -155,6 +158,13 @@ func (w *Worker) handleFunctionCallAdded(item *api.OutputItem, updates chan<- Wo
 	}
 
 	argsJSON, _ := json.Marshal(w.lastToolArgs)
+	w.Session.Turns = append(w.Session.Turns, SessionTurn{
+		Kind:      TurnToolCall,
+		ToolName:  item.Name,
+		Content:   string(argsJSON),
+		Timestamp: time.Now(),
+	})
+
 	w.fireHook(hooks.HookPreToolCall, map[string]string{
 		"tool_name": item.Name,
 		"tool_args": string(argsJSON),
@@ -173,6 +183,11 @@ func (w *Worker) handleStreamChunk(chunk api.ResponseChunk, updates chan<- Worke
 	switch chunk.Type {
 	case "response.output_text.delta":
 		w.Output += chunk.Delta
+		w.Session.Turns = append(w.Session.Turns, SessionTurn{
+			Kind:      TurnText,
+			Content:   chunk.Delta,
+			Timestamp: time.Now(),
+		})
 		updates <- WorkerUpdate{WorkerID: w.ID, Type: UpdateDelta, Content: chunk.Delta}
 
 	case "response.output_item.added":

@@ -18,11 +18,11 @@ type Turn struct {
 
 // Compactor summarises conversation history to free up context window.
 type Compactor struct {
-	client    *api.ResponsesClient
+	client    api.Client
 	threshold float64 // fraction of context window (e.g. 0.60)
 }
 
-func NewCompactor(client *api.ResponsesClient, threshold float64) *Compactor {
+func NewCompactor(client api.Client, threshold float64) *Compactor {
 	if threshold <= 0 {
 		threshold = 0.60
 	}

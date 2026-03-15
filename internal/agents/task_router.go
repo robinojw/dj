@@ -12,12 +12,12 @@ const defaultTeamThreshold = 3
 
 // TaskRouter analyzes a prompt and decides whether to spawn a team.
 type TaskRouter struct {
-	client    *api.ResponsesClient
+	client    api.Client
 	model     string
 	threshold int
 }
 
-func NewTaskRouter(client *api.ResponsesClient, model string, threshold int) *TaskRouter {
+func NewTaskRouter(client api.Client, model string, threshold int) *TaskRouter {
 	if threshold <= 0 {
 		threshold = defaultTeamThreshold
 	}

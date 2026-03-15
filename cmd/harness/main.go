@@ -45,10 +45,11 @@ func main() {
 	}
 
 	t := loadTheme(cfg.Theme.Name)
-	client := api.NewResponsesClient(apiKey)
+	client := api.NewWebSocketClient(apiKey)
+	defer client.Close()
 	tracker := api.NewTracker(cfg.Model.Default)
 
-	_ = initSkills(cfg)
+	skillsRegistry := initSkills(cfg)
 
 	ctx := context.Background()
 	mcpRegistry := initMCP(ctx, cfg)
@@ -61,7 +62,6 @@ func main() {
 	_ = lspClient
 
 	memMgr := memory.DefaultManager()
-	_ = memMgr
 
 	hookRunner := initHooks(cfg)
 	defer hookRunner.FireAsync(hooks.HookSessionEnd, map[string]string{"summary": "session ended"})
@@ -69,7 +69,7 @@ func main() {
 	cwd, _ := os.Getwd()
 	toolRegistry := tools.NewDefaultRegistry(cwd)
 
-	rootComponent := tuipkg.NewRootApp(t, client, tracker, cfg.Model.Default, cfg, toolRegistry, hookRunner)
+	rootComponent := tuipkg.NewRootApp(t, client, tracker, cfg.Model.Default, cfg, toolRegistry, skillsRegistry, memMgr, hookRunner)
 
 	gotuiApp, err := gotui.NewApp(
 		gotui.WithInlineHeight(3),

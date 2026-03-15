@@ -13,7 +13,9 @@ import (
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/checkpoint"
 	"github.com/robinojw/dj/internal/hooks"
+	"github.com/robinojw/dj/internal/memory"
 	"github.com/robinojw/dj/internal/modes"
+	"github.com/robinojw/dj/internal/skills"
 	"github.com/robinojw/dj/internal/tools"
 	"github.com/robinojw/dj/internal/tui/theme"
 )
@@ -41,6 +43,7 @@ type rootApp struct {
 	skillsView     *skillBrowser
 	cheatSheetView *cheatSheet
 	diffPagerView  *diffPager
+	topBarView     *topBar
 	permModal      *permissionModal
 	turboModal     *turboModal
 	debugOverlay   *debugOverlayComponent
@@ -54,29 +57,37 @@ type rootApp struct {
 	outputTokens *tui.State[int]
 	activeMCPs   *tui.State[[]string]
 
+	// Multi-agent orchestrator — set when a multi-agent task is dispatched
+	orchestrator  *agents.Orchestrator
+	activeAgentID *tui.State[string]
+
 	// Permission request channel — workers send requests here
 	permRequestCh chan modes.PermissionRequest
 
 	// Non-TUI dependencies
 	t              *theme.Theme
-	client         *api.ResponsesClient
+	client         api.Client
 	tracker        *api.Tracker
 	modeVal        modes.ExecutionMode
 	gate           *modes.Gate
 	turboConfirmed bool
 	checkpoints    *checkpoint.Manager
 	toolRegistry   *tools.ToolRegistry
+	skillsRegistry *skills.Registry
+	memoryMgr      *memory.Manager
 	hooks          *hooks.Runner
 	width          int
 }
 
 func NewRootApp(
 	t *theme.Theme,
-	client *api.ResponsesClient,
+	client api.Client,
 	tracker *api.Tracker,
 	modelName string,
 	cfg config.Config,
 	toolRegistry *tools.ToolRegistry,
+	skillsRegistry *skills.Registry,
+	memoryMgr *memory.Manager,
 	hookRunner *hooks.Runner,
 ) *rootApp {
 	gate := modes.NewGateWithRegistry(
@@ -94,25 +105,33 @@ func NewRootApp(
 	activeMCPsState := tui.NewState([]string{})
 
 	a := &rootApp{
-		screen:        tui.NewState(ScreenIDChat),
-		mode:          modeState,
-		model:         modelState,
-		cost:          costState,
-		inputTokens:   inputTokensState,
-		outputTokens:  outputTokensState,
-		activeMCPs:    activeMCPsState,
-		debugMode:     tui.NewState(false),
-		permRequestCh: make(chan modes.PermissionRequest, 10),
-		t:             t,
-		client:        client,
-		tracker:       tracker,
-		modeVal:       modes.ModeConfirm,
-		gate:          gate,
-		checkpoints:   checkpoint.NewManager(20),
-		toolRegistry:  toolRegistry,
-		hooks:         hookRunner,
-		width:         80,
+		screen:         tui.NewState(ScreenIDChat),
+		activeAgentID:  tui.NewState(""),
+		mode:           modeState,
+		model:          modelState,
+		cost:           costState,
+		inputTokens:    inputTokensState,
+		outputTokens:   outputTokensState,
+		activeMCPs:     activeMCPsState,
+		debugMode:      tui.NewState(false),
+		permRequestCh:  make(chan modes.PermissionRequest, 10),
+		t:              t,
+		client:         client,
+		tracker:        tracker,
+		modeVal:        modes.ModeConfirm,
+		gate:           gate,
+		checkpoints:    checkpoint.NewManager(20),
+		toolRegistry:   toolRegistry,
+		skillsRegistry: skillsRegistry,
+		memoryMgr:      memoryMgr,
+		hooks:          hookRunner,
+		width:          80,
 	}
+
+	branchState := tui.NewState(resolveGitBranch())
+	cwdState := tui.NewState(resolveWorkingDir())
+	titleState := tui.NewState("New Session")
+	a.topBarView = NewTopBar(t, branchState, cwdState, titleState)
 
 	// Create child components with callbacks
 	a.chatView = NewChat(t, 80, modeState, modelState, costState, inputTokensState, outputTokensState, activeMCPsState,
@@ -138,7 +157,11 @@ func (a *rootApp) Watchers() []tui.Watcher {
 	watchers := []tui.Watcher{
 		tui.NewChannelWatcher(a.permRequestCh, a.onPermissionRequest),
 	}
-	watchers = append(watchers, a.chatView.Watchers()...)
+	if a.orchestrator != nil {
+		watchers = append(watchers,
+			tui.NewChannelWatcher(a.orchestrator.UpdatesCh, a.onWorkerUpdate),
+		)
+	}
 	return watchers
 }
 
@@ -146,17 +169,39 @@ func (a *rootApp) onPermissionRequest(req modes.PermissionRequest) {
 	a.permModal.Show(&req)
 }
 
-func (a *rootApp) HandleWorkerUpdate(update agents.WorkerUpdate) {
+func (a *rootApp) onWorkerUpdate(update agents.WorkerUpdate) {
 	switch update.Type {
+	case agents.UpdateDelta:
+		a.teamView.AppendAgentDelta(update.WorkerID, update.Content)
+
+	case agents.UpdateToolCall:
+		a.teamView.AppendToolCall(update.WorkerID, update.Content)
+		if a.activeAgentID.Get() == update.WorkerID {
+			a.chatView.AppendToolCallBlock(update.WorkerID, update.Content)
+		}
+
+	case agents.UpdateToolResult:
+		a.teamView.AppendToolResult(update.WorkerID, update.Content)
+		if a.activeAgentID.Get() == update.WorkerID {
+			a.chatView.AppendToolResultBlock(update.WorkerID, update.Content)
+		}
+
 	case agents.UpdateDiffResult:
 		if update.DiffInfo != nil {
-			a.chatView.eventCh <- streamEvent{
-				Type:      eventDiff,
-				FilePath:  update.DiffInfo.FilePath,
-				DiffText:  update.DiffInfo.DiffText,
-				Timestamp: update.DiffInfo.Timestamp,
-			}
+			a.chatView.AppendDiffBlock(update.DiffInfo)
 		}
+
+	case agents.UpdateCompleted:
+		a.teamView.SetAgentStatus(update.WorkerID, "completed")
+		a.inputTokens.Update(func(v int) int { return v + update.Usage.InputTokens })
+		a.outputTokens.Update(func(v int) int { return v + update.Usage.OutputTokens })
+
+	case agents.UpdateError:
+		a.teamView.SetAgentStatus(update.WorkerID, "error")
+
+	case agents.UpdateSkipped:
+		a.teamView.SetAgentStatus(update.WorkerID, "skipped")
+
 	case agents.UpdateHookResult:
 		if update.HookResult != nil && a.debugOverlay.IsVisible() {
 			a.debugOverlay.AddInfo(fmt.Sprintf("Hook %s: exit=%d stdout=%q",
@@ -166,29 +211,74 @@ func (a *rootApp) HandleWorkerUpdate(update agents.WorkerUpdate) {
 }
 
 func (a *rootApp) handleSubmit(text string, mentionCtx string) {
-	modeCfg := modes.Modes[a.modeVal]
-
-	// Append mention context to instructions if present
-	instructions := modeCfg.SystemPrompt
+	fullText := text
 	if mentionCtx != "" {
-		instructions = instructions + "\n\n" + mentionCtx
+		fullText = fullText + "\n\n" + mentionCtx
 	}
 
-	req := api.CreateResponseRequest{
-		Model:        a.model.Get(),
-		Input:        api.MakeStringInput(text),
-		Instructions: instructions,
-		Reasoning:    &api.Reasoning{Effort: modeCfg.ReasoningEffort},
-		Stream:       true,
-	}
+	router := agents.NewTaskRouter(a.client, a.model.Get(), 0)
+	analysis, err := router.Analyze(context.Background(), fullText)
 
-	if a.debugOverlay.IsVisible() {
-		a.debugOverlay.AddInfo(fmt.Sprintf("Starting stream with model: %s", a.model.Get()))
-	}
+	isMultiAgent := err == nil && router.ShouldSpawnTeam(analysis)
 
-	ctx := context.Background()
-	chunks, errs := a.client.Stream(ctx, req)
-	a.chatView.StartStream(chunks, errs)
+	if isMultiAgent {
+		a.orchestrator = agents.NewOrchestrator(
+			a.client, a.skillsRegistry, a.tracker, a.model.Get(),
+		)
+		a.orchestrator.Mode = a.modeVal
+		a.orchestrator.Gate = a.gate
+		a.orchestrator.Registry = a.toolRegistry
+		a.orchestrator.PermReqCh = a.permRequestCh
+		a.orchestrator.Hooks = a.hooks
+		a.orchestrator.Memory = a.memoryMgr
+
+		statuses := make([]AgentStatus, 0, len(analysis.Subtasks))
+		for _, task := range analysis.Subtasks {
+			parentID := ""
+			if len(task.DependsOn) > 0 {
+				parentID = task.DependsOn[0]
+			}
+			statuses = append(statuses, AgentStatus{
+				ID:       task.ID,
+				Name:     task.Description,
+				Status:   "pending",
+				ParentID: parentID,
+			})
+		}
+		a.teamView.SetAgents(statuses)
+		a.pushScreen(ScreenIDTeam)
+
+		go a.orchestrator.Dispatch(context.Background(), analysis.Subtasks)
+	} else {
+		modeCfg := modes.Modes[a.modeVal]
+
+		var toolDefs []api.Tool
+		if a.toolRegistry != nil {
+			toolDefs = a.toolRegistry.ToolDefinitions(modeCfg.AllowedTools)
+		}
+
+		instructions := modeCfg.SystemPrompt
+		if mentionCtx != "" {
+			instructions = instructions + "\n\n" + mentionCtx
+		}
+
+		req := api.CreateResponseRequest{
+			Model:        a.model.Get(),
+			Input:        api.MakeStringInput(text),
+			Instructions: instructions,
+			Tools:        toolDefs,
+			Reasoning:    &api.Reasoning{Effort: modeCfg.ReasoningEffort},
+			Stream:       true,
+		}
+
+		if a.debugOverlay.IsVisible() {
+			a.debugOverlay.AddInfo(fmt.Sprintf("Starting stream with model: %s", a.model.Get()))
+		}
+
+		ctx := context.Background()
+		chunks, errs := a.client.Stream(ctx, req)
+		a.chatView.StartStream(chunks, errs)
+	}
 }
 
 func (a *rootApp) openDiffPager(diffs []storedDiff) {
@@ -276,32 +366,23 @@ func (a *rootApp) KeyMap() tui.KeyMap {
 	}
 
 	if a.screen.Get() == ScreenIDChat {
-		if a.chatView.streaming.Get() {
-			km = append(km,
-				tui.OnKey(tui.KeyEscape, func(ke tui.KeyEvent) {
-					a.chatView.cancelActiveStream()
-					a.chatView.streaming.Set(false)
-				}),
-			)
-		} else {
-			km = append(km,
-				tui.OnKey(tui.KeyCtrlT, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDTeam) }),
-				tui.OnKey(tui.KeyCtrlM, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDMCP) }),
-				tui.OnKey(tui.KeyCtrlK, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDSkills) }),
-				tui.OnKey(tui.KeyCtrlE, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDEnhance) }),
-				tui.OnKey(tui.KeyCtrlH, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDCheatSheet) }),
-				tui.OnKeyStop(tui.KeyTab, func(ke tui.KeyEvent) { a.cycleMode() }),
-				tui.OnKey(tui.KeyCtrlN, func(ke tui.KeyEvent) { a.cycleModel() }),
-				tui.OnKey(tui.KeyCtrlZ, func(ke tui.KeyEvent) {
-					cp := a.checkpoints.Pop()
-					if cp != nil {
-						if err := a.checkpoints.Restore(*cp); err == nil && a.app != nil {
-							a.app.PrintAboveln("[Restored: %s]", cp.Description)
-						}
+		km = append(km,
+			tui.OnKey(tui.KeyCtrlT, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDTeam) }),
+			tui.OnKey(tui.KeyCtrlM, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDMCP) }),
+			tui.OnKey(tui.KeyCtrlK, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDSkills) }),
+			tui.OnKey(tui.KeyCtrlE, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDEnhance) }),
+			tui.OnKey(tui.KeyCtrlH, func(ke tui.KeyEvent) { a.pushScreen(ScreenIDCheatSheet) }),
+			tui.OnKeyStop(tui.KeyTab, func(ke tui.KeyEvent) { a.cycleMode() }),
+			tui.OnKey(tui.KeyCtrlN, func(ke tui.KeyEvent) { a.cycleModel() }),
+			tui.OnKey(tui.KeyCtrlZ, func(ke tui.KeyEvent) {
+				cp := a.checkpoints.Pop()
+				if cp != nil {
+					if err := a.checkpoints.Restore(*cp); err == nil && a.app != nil {
+						a.app.PrintAboveln("[Restored: %s]", cp.Description)
 					}
-				}),
-			)
-		}
+				}
+			}),
+		)
 	}
 
 	return km
@@ -329,44 +410,46 @@ func (a *rootApp) Render(app *tui.App) *tui.Element {
 		__tui_5 := tui.New(
 			tui.WithDisplay(tui.DisplayFlex), tui.WithDirection(tui.Column),
 		)
-		__tui_6 := a.chatView.Render(app)
+		__tui_6 := a.topBarView.Render(app)
 		__tui_5.AddChild(__tui_6)
+		__tui_7 := a.chatView.Render(app)
+		__tui_5.AddChild(__tui_7)
 		if a.debugOverlay.IsVisible() {
-			__tui_7 := a.debugOverlay.Render(app)
-			__tui_5.AddChild(__tui_7)
+			__tui_8 := a.debugOverlay.Render(app)
+			__tui_5.AddChild(__tui_8)
 		}
 		if __tui_0 == nil {
 			__tui_0 = __tui_5
 		}
 	} else if a.screen.Get() == ScreenIDTeam {
-		__tui_8 := a.teamView.Render(app)
-		if __tui_0 == nil {
-			__tui_0 = __tui_8
-		}
-	} else if a.screen.Get() == ScreenIDMCP {
-		__tui_9 := a.mcpView.Render(app)
+		__tui_9 := a.teamView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_9
 		}
-	} else if a.screen.Get() == ScreenIDSkills {
-		__tui_10 := a.skillsView.Render(app)
+	} else if a.screen.Get() == ScreenIDMCP {
+		__tui_10 := a.mcpView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_10
 		}
-	} else if a.screen.Get() == ScreenIDEnhance {
-		__tui_11 := a.enhanceView.Render(app)
+	} else if a.screen.Get() == ScreenIDSkills {
+		__tui_11 := a.skillsView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_11
 		}
-	} else if a.screen.Get() == ScreenIDCheatSheet {
-		__tui_12 := a.cheatSheetView.Render(app)
+	} else if a.screen.Get() == ScreenIDEnhance {
+		__tui_12 := a.enhanceView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_12
 		}
-	} else if a.screen.Get() == ScreenIDDiffPager {
-		__tui_13 := a.diffPagerView.Render(app)
+	} else if a.screen.Get() == ScreenIDCheatSheet {
+		__tui_13 := a.cheatSheetView.Render(app)
 		if __tui_0 == nil {
 			__tui_0 = __tui_13
+		}
+	} else if a.screen.Get() == ScreenIDDiffPager {
+		__tui_14 := a.diffPagerView.Render(app)
+		if __tui_0 == nil {
+			__tui_0 = __tui_14
 		}
 	}
 
@@ -387,9 +470,11 @@ func (a *rootApp) UpdateProps(fresh tui.Component) {
 	a.skillsView = f.skillsView
 	a.cheatSheetView = f.cheatSheetView
 	a.diffPagerView = f.diffPagerView
+	a.topBarView = f.topBarView
 	a.permModal = f.permModal
 	a.turboModal = f.turboModal
 	a.debugOverlay = f.debugOverlay
+	a.orchestrator = f.orchestrator
 	a.t = f.t
 	a.client = f.client
 	a.tracker = f.tracker
@@ -398,6 +483,8 @@ func (a *rootApp) UpdateProps(fresh tui.Component) {
 	a.turboConfirmed = f.turboConfirmed
 	a.checkpoints = f.checkpoints
 	a.toolRegistry = f.toolRegistry
+	a.skillsRegistry = f.skillsRegistry
+	a.memoryMgr = f.memoryMgr
 	a.hooks = f.hooks
 	a.width = f.width
 }
@@ -430,6 +517,9 @@ func (a *rootApp) BindApp(app *tui.App) {
 	if a.activeMCPs != nil {
 		a.activeMCPs.BindApp(app)
 	}
+	if a.activeAgentID != nil {
+		a.activeAgentID.BindApp(app)
+	}
 	if binder, ok := any(a.chatView).(tui.AppBinder); ok {
 		binder.BindApp(app)
 	}
@@ -449,6 +539,9 @@ func (a *rootApp) BindApp(app *tui.App) {
 		binder.BindApp(app)
 	}
 	if binder, ok := any(a.diffPagerView).(tui.AppBinder); ok {
+		binder.BindApp(app)
+	}
+	if binder, ok := any(a.topBarView).(tui.AppBinder); ok {
 		binder.BindApp(app)
 	}
 	if binder, ok := any(a.permModal).(tui.AppBinder); ok {
@@ -484,6 +577,9 @@ func (a *rootApp) UnbindApp() {
 		unbinder.UnbindApp()
 	}
 	if unbinder, ok := any(a.diffPagerView).(tui.AppUnbinder); ok {
+		unbinder.UnbindApp()
+	}
+	if unbinder, ok := any(a.topBarView).(tui.AppUnbinder); ok {
 		unbinder.UnbindApp()
 	}
 	if unbinder, ok := any(a.permModal).(tui.AppUnbinder); ok {

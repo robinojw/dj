@@ -15,7 +15,14 @@ const defaultBaseURL = "https://api.openai.com"
 const responsesPath = "/v1/responses"
 const sseBufferSize = 1024 * 1024
 
-// ResponsesClient streams responses from the OpenAI Responses API.
+// Client is the interface for interacting with the OpenAI Responses API.
+type Client interface {
+	Stream(ctx context.Context, req CreateResponseRequest) (<-chan ResponseChunk, <-chan error)
+	Send(ctx context.Context, req CreateResponseRequest) (*ResponseObject, error)
+	Close() error
+}
+
+// ResponsesClient streams responses from the OpenAI Responses API via HTTP/SSE.
 type ResponsesClient struct {
 	httpClient *http.Client
 	apiKey     string
@@ -86,6 +93,11 @@ func (c *ResponsesClient) Stream(
 
 	return ch, errs
 }
+
+// Close is a no-op for the HTTP client since connections are managed by http.Client.
+func (c *ResponsesClient) Close() error { return nil }
+
+var _ Client = (*ResponsesClient)(nil)
 
 // Send sends a non-streaming request and returns the complete response.
 func (c *ResponsesClient) Send(
@@ -160,7 +172,7 @@ func (c *ResponsesClient) parseSSE(
 			continue
 		}
 
-		chunk := c.eventToChunk(event)
+		chunk := eventToChunk(event)
 		if chunk != nil {
 			ch <- *chunk
 		}
@@ -178,7 +190,7 @@ type sseEvent struct {
 	Response json.RawMessage `json:"response,omitempty"`
 }
 
-func (c *ResponsesClient) eventToChunk(event sseEvent) *ResponseChunk {
+func eventToChunk(event sseEvent) *ResponseChunk {
 	switch event.Type {
 	case "response.output_text.delta":
 		return &ResponseChunk{

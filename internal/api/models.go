@@ -51,9 +51,9 @@ func MakeMessagesInput(items []InputItem) json.RawMessage {
 	return b
 }
 
-// --- SSE Response types ---
+// --- Response streaming types ---
 
-// ResponseChunk is an event received from the SSE stream.
+// ResponseChunk is an event received from the API stream (SSE or WebSocket).
 type ResponseChunk struct {
 	Type string `json:"type"`
 
@@ -93,4 +93,42 @@ type FunctionCallResult struct {
 	Type   string `json:"type"` // "function_call_output"
 	CallID string `json:"call_id"`
 	Output string `json:"output"`
+}
+
+// --- WebSocket event types ---
+
+// wsCreateEvent wraps a CreateResponseRequest for sending over WebSocket.
+// The fields are spread at the top level alongside "type": "response.create",
+// matching the Responses API WebSocket protocol.
+type wsCreateEvent struct {
+	Type               string          `json:"type"`
+	Model              string          `json:"model"`
+	Input              json.RawMessage `json:"input"`
+	PreviousResponseID string          `json:"previous_response_id,omitempty"`
+	Instructions       string          `json:"instructions,omitempty"`
+	Tools              []Tool          `json:"tools,omitempty"`
+	Reasoning          *Reasoning      `json:"reasoning,omitempty"`
+	Store              *bool           `json:"store,omitempty"`
+}
+
+func newWSCreateEvent(req CreateResponseRequest) wsCreateEvent {
+	return wsCreateEvent{
+		Type:               "response.create",
+		Model:              req.Model,
+		Input:              req.Input,
+		PreviousResponseID: req.PreviousResponseID,
+		Instructions:       req.Instructions,
+		Tools:              req.Tools,
+		Reasoning:          req.Reasoning,
+	}
+}
+
+// wsErrorEvent represents an error sent by the server over WebSocket.
+type wsErrorEvent struct {
+	Type   string `json:"type"`
+	Status int    `json:"status"`
+	Error  struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
 }

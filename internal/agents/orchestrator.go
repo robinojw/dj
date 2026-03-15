@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/internal/api"
 	"github.com/robinojw/dj/internal/hooks"
 	"github.com/robinojw/dj/internal/memory"
@@ -24,7 +23,7 @@ type Orchestrator struct {
 	Registry  *tools.ToolRegistry
 	PermReqCh chan modes.PermissionRequest
 	Hooks     *hooks.Runner
-	client    *api.ResponsesClient
+	client    api.Client
 	skills    *skills.Registry
 	model     string
 	tracker   *api.Tracker
@@ -32,7 +31,7 @@ type Orchestrator struct {
 }
 
 func NewOrchestrator(
-	client *api.ResponsesClient,
+	client api.Client,
 	skillsRegistry *skills.Registry,
 	tracker *api.Tracker,
 	model string,
@@ -83,7 +82,8 @@ func (o *Orchestrator) coordinateWorkers(dag *dagState, remaining int, wg *sync.
 }
 
 // Dispatch spawns workers for each subtask using topological scheduling.
-func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
+// Runs coordination in a background goroutine; callers read UpdatesCh directly.
+func (o *Orchestrator) Dispatch(ctx context.Context, subtasks []Subtask) {
 	o.mu.Lock()
 	for _, task := range subtasks {
 		w := NewWorker(task, o.client, o.skills, o.model, o.RootID, o.Mode, o.Memory, o.Gate, o.Registry, o.PermReqCh, o.Hooks)
@@ -91,41 +91,23 @@ func (o *Orchestrator) Dispatch(subtasks []Subtask) tea.Cmd {
 	}
 	o.mu.Unlock()
 
-	return func() tea.Msg {
-		dag, err := buildDAG(subtasks)
-		if err != nil {
-			o.UpdatesCh <- WorkerUpdate{Type: UpdateError, Content: err.Error(), Error: err}
-			return nil
-		}
+	dag, err := buildDAG(subtasks)
+	if err != nil {
+		o.UpdatesCh <- WorkerUpdate{Type: UpdateError, Content: err.Error(), Error: err}
+		return
+	}
 
-		var wg sync.WaitGroup
-		doneCh := make(chan string, len(subtasks))
+	var wg sync.WaitGroup
+	doneCh := make(chan string, len(subtasks))
 
-		for _, id := range dag.readySet() {
-			o.launchWorker(id, &wg, doneCh)
-		}
+	for _, id := range dag.readySet() {
+		o.launchWorker(id, &wg, doneCh)
+	}
 
-		go o.coordinateWorkers(dag, len(subtasks), &wg, doneCh)
-
+	go func() {
+		o.coordinateWorkers(dag, len(subtasks), &wg, doneCh)
 		wg.Wait()
-		return nil
-	}
-}
-
-// ListenForUpdates returns a tea.Cmd that listens for worker updates.
-func (o *Orchestrator) ListenForUpdates() tea.Cmd {
-	return func() tea.Msg {
-		update := <-o.UpdatesCh
-		if update.Type == UpdateCompleted || update.Type == UpdateError || update.Type == UpdateSkipped {
-			if update.Usage.InputTokens > 0 {
-				o.tracker.Record(api.Usage{
-					InputTokens:  update.Usage.InputTokens,
-					OutputTokens: update.Usage.OutputTokens,
-				})
-			}
-		}
-		return update
-	}
+	}()
 }
 
 // GetWorker returns a worker by ID.
