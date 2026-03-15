@@ -225,12 +225,6 @@ func (a *rootApp) onWorkerUpdate(update agents.WorkerUpdate) {
 }
 
 func (a *rootApp) handleSubmit(text string, mentionCtx string) {
-	a.startSingleAgentStream(text, mentionCtx)
-
-	go a.analyzeForMultiAgent(text, mentionCtx)
-}
-
-func (a *rootApp) startSingleAgentStream(text string, mentionCtx string) {
 	modeCfg := modes.Modes[a.modeVal]
 
 	var toolDefs []api.Tool
@@ -259,51 +253,6 @@ func (a *rootApp) startSingleAgentStream(text string, mentionCtx string) {
 	ctx := context.Background()
 	chunks, errs := a.client.Stream(ctx, req)
 	a.chatView.StartStream(chunks, errs)
-}
-
-func (a *rootApp) analyzeForMultiAgent(text string, mentionCtx string) {
-	fullText := text
-	if mentionCtx != "" {
-		fullText = fullText + "\n\n" + mentionCtx
-	}
-
-	router := agents.NewTaskRouter(a.client, a.model.Get(), 0)
-	analysis, err := router.Analyze(context.Background(), fullText)
-
-	isMultiAgent := err == nil && router.ShouldSpawnTeam(analysis)
-	if !isMultiAgent {
-		return
-	}
-
-	a.chatView.cancelActiveStream()
-
-	a.orchestrator = agents.NewOrchestrator(
-		a.client, a.skillsRegistry, a.tracker, a.model.Get(),
-	)
-	a.orchestrator.Mode = a.modeVal
-	a.orchestrator.Gate = a.gate
-	a.orchestrator.Registry = a.toolRegistry
-	a.orchestrator.PermReqCh = a.permRequestCh
-	a.orchestrator.Hooks = a.hooks
-	a.orchestrator.Memory = a.memoryMgr
-
-	statuses := make([]AgentStatus, 0, len(analysis.Subtasks))
-	for _, task := range analysis.Subtasks {
-		parentID := ""
-		if len(task.DependsOn) > 0 {
-			parentID = task.DependsOn[0]
-		}
-		statuses = append(statuses, AgentStatus{
-			ID:       task.ID,
-			Name:     task.Description,
-			Status:   "pending",
-			ParentID: parentID,
-		})
-	}
-	a.teamView.SetAgents(statuses)
-	a.pushScreen(ScreenIDTeam)
-
-	a.orchestrator.Dispatch(context.Background(), analysis.Subtasks)
 }
 
 func (a *rootApp) ensureTopBar() {

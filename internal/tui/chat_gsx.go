@@ -19,6 +19,7 @@ import (
 type chat struct {
 	app           *tui.App
 	textareaRef   *tui.Ref
+	inputValue    *tui.State[string]
 	streamWriter  *tui.StreamWriter
 	streaming     *tui.State[bool]
 	chatMessages  *tui.State[[]chatMsg]
@@ -59,6 +60,7 @@ func NewChat(
 ) *chat {
 	return &chat{
 		textareaRef:   tui.NewRef(),
+		inputValue:    tui.NewState(""),
 		streaming:     tui.NewState(false),
 		chatMessages:  tui.NewState([]chatMsg{}),
 		eventCh:       make(chan streamEvent, 100),
@@ -162,6 +164,8 @@ func (c *chat) submit(text string) {
 	if text == "" || c.streaming.Get() {
 		return
 	}
+
+	c.inputValue.Set("")
 
 	isFirstMessage := len(c.chatMessages.Get()) == 0
 	c.chatMessages.Update(func(msgs []chatMsg) []chatMsg {
@@ -322,6 +326,7 @@ func (c *chat) Render(app *tui.App) *tui.Element {
 	__tui_2 := app.MountPersistent(c, 0, func() tui.Component {
 		return tui.NewTextArea(
 			tui.WithTextAreaAutoFocus(true),
+			tui.WithTextAreaValue(c.inputValue),
 			tui.WithTextAreaPlaceholder("Send a message... (/skills name)"),
 			tui.WithTextAreaWidth(c.width-2),
 			tui.WithTextAreaBorder(tui.BorderRounded),
@@ -356,6 +361,9 @@ var _ tui.PropsUpdater = (*chat)(nil)
 
 func (c *chat) BindApp(app *tui.App) {
 	c.app = app
+	if c.inputValue != nil {
+		c.inputValue.BindApp(app)
+	}
 	if c.streaming != nil {
 		c.streaming.BindApp(app)
 	}
