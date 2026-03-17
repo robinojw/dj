@@ -34,6 +34,10 @@ type Client struct {
 	// OnServerRequest is called for server-to-client requests (has id).
 	// Set this before calling Start.
 	OnServerRequest func(id int, method string, params json.RawMessage)
+
+	// Router dispatches typed notifications by method name.
+	// Falls back to OnNotification for unregistered methods.
+	Router *NotificationRouter
 }
 
 // NewClient creates a client that will spawn the given command.
@@ -173,8 +177,15 @@ func (c *Client) Dispatch(msg Message) {
 		return
 	}
 
-	// Notification (no ID)
-	if c.OnNotification != nil && msg.Method != "" {
+	if msg.Method == "" {
+		return
+	}
+
+	if c.Router != nil {
+		c.Router.Handle(msg.Method, msg.Params)
+	}
+
+	if c.OnNotification != nil {
 		c.OnNotification(msg.Method, msg.Params)
 	}
 }
