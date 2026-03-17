@@ -6,6 +6,11 @@ import (
 	"github.com/robinojw/dj/internal/state"
 )
 
+const (
+	FocusCanvas = iota
+	FocusTree
+)
+
 var titleStyle = lipgloss.NewStyle().
 	Bold(true).
 	Foreground(lipgloss.Color("39")).
@@ -14,6 +19,8 @@ var titleStyle = lipgloss.NewStyle().
 type AppModel struct {
 	store  *state.ThreadStore
 	canvas CanvasModel
+	tree   TreeModel
+	focus  int
 	width  int
 	height int
 }
@@ -22,7 +29,12 @@ func NewAppModel(store *state.ThreadStore) AppModel {
 	return AppModel{
 		store:  store,
 		canvas: NewCanvasModel(store),
+		tree:   NewTreeModel(store),
 	}
+}
+
+func (app AppModel) Focus() int {
+	return app.focus
 }
 
 func (app AppModel) Init() tea.Cmd {
@@ -54,6 +66,48 @@ func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC, tea.KeyEsc:
 		return app, tea.Quit
+	case tea.KeyRunes:
+		return app.handleRune(msg)
+	default:
+		return app.handleArrow(msg)
+	}
+}
+
+func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "t" {
+		app.toggleFocus()
+	}
+	return app, nil
+}
+
+func (app *AppModel) toggleFocus() {
+	if app.focus == FocusCanvas {
+		app.focus = FocusTree
+		return
+	}
+	app.focus = FocusCanvas
+}
+
+func (app AppModel) handleArrow(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if app.focus == FocusTree {
+		app.handleTreeArrow(msg)
+		return app, nil
+	}
+	app.handleCanvasArrow(msg)
+	return app, nil
+}
+
+func (app *AppModel) handleTreeArrow(msg tea.KeyMsg) {
+	switch msg.Type {
+	case tea.KeyDown:
+		app.tree.MoveDown()
+	case tea.KeyUp:
+		app.tree.MoveUp()
+	}
+}
+
+func (app *AppModel) handleCanvasArrow(msg tea.KeyMsg) {
+	switch msg.Type {
 	case tea.KeyRight, tea.KeyTab:
 		app.canvas.MoveRight()
 	case tea.KeyLeft, tea.KeyShiftTab:
@@ -63,7 +117,6 @@ func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyUp:
 		app.canvas.MoveUp()
 	}
-	return app, nil
 }
 
 func (app AppModel) handleThreadMessage(msg ThreadMessageMsg) (tea.Model, tea.Cmd) {
@@ -100,5 +153,12 @@ func (app AppModel) handleCommandOutput(msg CommandOutputMsg) (tea.Model, tea.Cm
 func (app AppModel) View() string {
 	title := titleStyle.Render("DJ — Codex TUI Visualizer")
 	canvas := app.canvas.View()
+
+	if app.focus == FocusTree {
+		treeView := app.tree.View()
+		body := lipgloss.JoinHorizontal(lipgloss.Top, treeView+"  ", canvas)
+		return title + "\n" + body + "\n"
+	}
+
 	return title + "\n" + canvas + "\n"
 }
