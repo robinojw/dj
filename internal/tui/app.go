@@ -9,6 +9,7 @@ import (
 const (
 	FocusCanvas = iota
 	FocusTree
+	FocusSession
 )
 
 var titleStyle = lipgloss.NewStyle().
@@ -17,12 +18,13 @@ var titleStyle = lipgloss.NewStyle().
 	MarginBottom(1)
 
 type AppModel struct {
-	store  *state.ThreadStore
-	canvas CanvasModel
-	tree   TreeModel
-	focus  int
-	width  int
-	height int
+	store   *state.ThreadStore
+	canvas  CanvasModel
+	tree    TreeModel
+	session *SessionModel
+	focus   int
+	width   int
+	height  int
 }
 
 func NewAppModel(store *state.ThreadStore) AppModel {
@@ -48,6 +50,9 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		app.width = msg.Width
 		app.height = msg.Height
+		if app.session != nil {
+			app.session.SetSize(msg.Width, msg.Height)
+		}
 		return app, nil
 	case ThreadStatusMsg:
 		app.store.UpdateStatus(msg.ThreadID, msg.Status, msg.Title)
@@ -63,9 +68,15 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if app.focus == FocusSession {
+		return app.handleSessionKey(msg)
+	}
+
 	switch msg.Type {
 	case tea.KeyCtrlC, tea.KeyEsc:
 		return app, tea.Quit
+	case tea.KeyEnter:
+		return app.openSession()
 	case tea.KeyRunes:
 		return app.handleRune(msg)
 	default:
@@ -119,6 +130,67 @@ func (app *AppModel) handleCanvasArrow(msg tea.KeyMsg) {
 	}
 }
 
+func (app AppModel) handleSessionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyCtrlC:
+		return app, tea.Quit
+	case tea.KeyEsc:
+		app.closeSession()
+		return app, nil
+	case tea.KeyUp, tea.KeyDown, tea.KeyPgUp, tea.KeyPgDown:
+		app.scrollSession(msg)
+		return app, nil
+	}
+	return app, nil
+}
+
+func (app AppModel) openSession() (tea.Model, tea.Cmd) {
+	threadID := app.canvas.SelectedThreadID()
+	if threadID == "" {
+		return app, nil
+	}
+
+	thread, exists := app.store.Get(threadID)
+	if !exists {
+		return app, nil
+	}
+
+	session := NewSessionModel(thread)
+	session.SetSize(app.width, app.height)
+	app.session = &session
+	app.focus = FocusSession
+	return app, nil
+}
+
+func (app *AppModel) closeSession() {
+	app.session = nil
+	app.focus = FocusCanvas
+}
+
+func (app *AppModel) scrollSession(msg tea.KeyMsg) {
+	if app.session == nil {
+		return
+	}
+
+	switch msg.Type {
+	case tea.KeyUp:
+		app.session.viewport.ScrollUp(1)
+	case tea.KeyDown:
+		app.session.viewport.ScrollDown(1)
+	case tea.KeyPgUp:
+		app.session.viewport.HalfPageUp()
+	case tea.KeyPgDown:
+		app.session.viewport.HalfPageDown()
+	}
+}
+
+func (app *AppModel) refreshSession() {
+	if app.session == nil {
+		return
+	}
+	app.session.Refresh()
+}
+
 func (app AppModel) handleThreadMessage(msg ThreadMessageMsg) (tea.Model, tea.Cmd) {
 	thread, exists := app.store.Get(msg.ThreadID)
 	if !exists {
@@ -129,6 +201,7 @@ func (app AppModel) handleThreadMessage(msg ThreadMessageMsg) (tea.Model, tea.Cm
 		Role:    msg.Role,
 		Content: msg.Content,
 	})
+	app.refreshSession()
 	return app, nil
 }
 
@@ -138,6 +211,7 @@ func (app AppModel) handleThreadDelta(msg ThreadDeltaMsg) (tea.Model, tea.Cmd) {
 		return app, nil
 	}
 	thread.AppendDelta(msg.MessageID, msg.Delta)
+	app.refreshSession()
 	return app, nil
 }
 
@@ -147,11 +221,17 @@ func (app AppModel) handleCommandOutput(msg CommandOutputMsg) (tea.Model, tea.Cm
 		return app, nil
 	}
 	thread.AppendOutput(msg.ExecID, msg.Data)
+	app.refreshSession()
 	return app, nil
 }
 
 func (app AppModel) View() string {
 	title := titleStyle.Render("DJ — Codex TUI Visualizer")
+
+	if app.focus == FocusSession && app.session != nil {
+		return title + "\n" + app.session.View() + "\n"
+	}
+
 	canvas := app.canvas.View()
 
 	if app.focus == FocusTree {
