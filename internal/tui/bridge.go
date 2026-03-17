@@ -1,9 +1,12 @@
 package tui
 
-import "github.com/robinojw/dj/internal/appserver"
+import (
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/robinojw/dj/internal/appserver"
+)
 
 type MessageSender interface {
-	Send(msg any)
+	Send(msg tea.Msg)
 }
 
 func WireEventBridge(router *appserver.NotificationRouter, sender MessageSender) {

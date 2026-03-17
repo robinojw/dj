@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"context"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/robinojw/dj/internal/appserver"
 	"github.com/robinojw/dj/internal/state"
 )
 
@@ -19,6 +22,9 @@ var titleStyle = lipgloss.NewStyle().
 
 type AppModel struct {
 	store       *state.ThreadStore
+	client      *appserver.Client
+	program     *tea.Program
+	statusBar   *StatusBar
 	canvas      CanvasModel
 	tree        TreeModel
 	session     *SessionModel
@@ -32,14 +38,34 @@ type AppModel struct {
 	height      int
 }
 
-func NewAppModel(store *state.ThreadStore) AppModel {
-	return AppModel{
-		store:  store,
-		canvas: NewCanvasModel(store),
-		tree:   NewTreeModel(store),
-		prefix: NewPrefixHandler(),
-		help:   NewHelpModel(),
+func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
+	app := AppModel{
+		store:     store,
+		statusBar: NewStatusBar(),
+		canvas:    NewCanvasModel(store),
+		tree:      NewTreeModel(store),
+		prefix:    NewPrefixHandler(),
+		help:      NewHelpModel(),
 	}
+	for _, opt := range opts {
+		opt(&app)
+	}
+	return app
+}
+
+// AppOption configures optional AppModel fields.
+type AppOption func(*AppModel)
+
+// WithClient sets the app-server client.
+func WithClient(client *appserver.Client) AppOption {
+	return func(a *AppModel) {
+		a.client = client
+	}
+}
+
+// SetProgram stores the tea.Program for sending async messages.
+func (app *AppModel) SetProgram(p *tea.Program) {
+	app.program = p
 }
 
 func (app AppModel) Focus() int {
@@ -51,7 +77,34 @@ func (app AppModel) HelpVisible() bool {
 }
 
 func (app AppModel) Init() tea.Cmd {
-	return nil
+	if app.client == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		ctx := context.Background()
+		if err := app.client.Start(ctx); err != nil {
+			return AppServerErrorMsg{Err: err}
+		}
+
+		router := appserver.NewNotificationRouter()
+		app.client.Router = router
+		if app.program != nil {
+			WireEventBridge(router, app.program)
+		}
+
+		go app.client.ReadLoop(app.client.Dispatch)
+
+		caps, err := app.client.Initialize(ctx)
+		if err != nil {
+			return AppServerErrorMsg{Err: err}
+		}
+
+		return AppServerConnectedMsg{
+			ServerName:    caps.ServerInfo.Name,
+			ServerVersion: caps.ServerInfo.Version,
+		}
+	}
 }
 
 func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -61,9 +114,16 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		app.width = msg.Width
 		app.height = msg.Height
+		app.statusBar.SetWidth(msg.Width)
 		if app.session != nil {
 			app.session.SetSize(msg.Width, msg.Height)
 		}
+		return app, nil
+	case AppServerConnectedMsg:
+		app.statusBar.SetConnected(true)
+		return app, nil
+	case AppServerErrorMsg:
+		app.statusBar.SetError(msg.Error())
 		return app, nil
 	case ThreadStatusMsg:
 		app.store.UpdateStatus(msg.ThreadID, msg.Status, msg.Title)
@@ -268,17 +328,18 @@ func (app AppModel) handleCommandOutput(msg CommandOutputMsg) (tea.Model, tea.Cm
 
 func (app AppModel) View() string {
 	title := titleStyle.Render("DJ — Codex TUI Visualizer")
+	status := app.statusBar.View()
 
 	if app.helpVisible {
-		return title + "\n" + app.help.View() + "\n"
+		return title + "\n" + app.help.View() + "\n" + status
 	}
 
 	if app.menuVisible {
-		return title + "\n" + app.menu.View() + "\n"
+		return title + "\n" + app.menu.View() + "\n" + status
 	}
 
 	if app.focus == FocusSession && app.session != nil {
-		return title + "\n" + app.session.View() + "\n"
+		return title + "\n" + app.session.View() + "\n" + status
 	}
 
 	canvas := app.canvas.View()
@@ -286,8 +347,8 @@ func (app AppModel) View() string {
 	if app.focus == FocusTree {
 		treeView := app.tree.View()
 		body := lipgloss.JoinHorizontal(lipgloss.Top, treeView+"  ", canvas)
-		return title + "\n" + body + "\n"
+		return title + "\n" + body + "\n" + status
 	}
 
-	return title + "\n" + canvas + "\n"
+	return title + "\n" + canvas + "\n" + status
 }
