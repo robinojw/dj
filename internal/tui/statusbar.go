@@ -13,6 +13,8 @@ var (
 			Padding(0, 1)
 	statusConnectedStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("42"))
+	statusConnectingStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("214"))
 	statusDisconnectedStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("196"))
 	statusErrorStyle = lipgloss.NewStyle().
@@ -22,6 +24,7 @@ var (
 
 type StatusBar struct {
 	connected      bool
+	connecting     bool
 	threadCount    int
 	selectedThread string
 	errorMessage   string
@@ -32,7 +35,14 @@ func NewStatusBar() *StatusBar {
 	return &StatusBar{}
 }
 
+func (statusBar *StatusBar) SetConnecting() {
+	statusBar.connecting = true
+	statusBar.connected = false
+	statusBar.errorMessage = ""
+}
+
 func (statusBar *StatusBar) SetConnected(connected bool) {
+	statusBar.connecting = false
 	statusBar.connected = connected
 	if connected {
 		statusBar.errorMessage = ""
@@ -47,6 +57,16 @@ func (statusBar *StatusBar) SetSelectedThread(name string) {
 	statusBar.selectedThread = name
 }
 
+func (statusBar StatusBar) renderConnectionState() string {
+	if statusBar.connected {
+		return statusConnectedStyle.Render("● Connected")
+	}
+	if statusBar.connecting {
+		return statusConnectingStyle.Render("◌ Connecting to app-server...")
+	}
+	return statusDisconnectedStyle.Render("○ Disconnected — requires codex CLI (codex app-server)")
+}
+
 func (statusBar *StatusBar) SetError(message string) {
 	statusBar.errorMessage = message
 }
@@ -56,12 +76,7 @@ func (statusBar *StatusBar) SetWidth(width int) {
 }
 
 func (statusBar StatusBar) View() string {
-	var left string
-	if statusBar.connected {
-		left = statusConnectedStyle.Render("● Connected")
-	} else {
-		left = statusDisconnectedStyle.Render("○ Disconnected")
-	}
+	left := statusBar.renderConnectionState()
 
 	if statusBar.errorMessage != "" {
 		left += " " + statusErrorStyle.Render(statusBar.errorMessage)

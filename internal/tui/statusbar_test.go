@@ -33,6 +33,35 @@ func TestStatusBarDisconnected(t *testing.T) {
 	if !strings.Contains(output, "Disconnected") {
 		t.Errorf("expected Disconnected in output:\n%s", output)
 	}
+	if !strings.Contains(output, "codex") {
+		t.Errorf("expected codex hint in disconnected output:\n%s", output)
+	}
+}
+
+func TestStatusBarConnecting(t *testing.T) {
+	bar := NewStatusBar()
+	bar.SetConnecting()
+
+	output := bar.View()
+
+	if !strings.Contains(output, "Connecting") {
+		t.Errorf("expected Connecting in output:\n%s", output)
+	}
+}
+
+func TestStatusBarConnectingClearedOnConnect(t *testing.T) {
+	bar := NewStatusBar()
+	bar.SetConnecting()
+	bar.SetConnected(true)
+
+	output := bar.View()
+
+	if strings.Contains(output, "Connecting") {
+		t.Errorf("expected Connecting cleared after connect:\n%s", output)
+	}
+	if !strings.Contains(output, "Connected") {
+		t.Errorf("expected Connected in output:\n%s", output)
+	}
 }
 
 func TestStatusBarError(t *testing.T) {

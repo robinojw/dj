@@ -43,6 +43,11 @@ type AppModel struct {
 }
 
 func NewAppModel(store *state.ThreadStore, client *appserver.Client) AppModel {
+	bar := NewStatusBar()
+	if client != nil {
+		bar.SetConnecting()
+	}
+
 	return AppModel{
 		store:     store,
 		client:    client,
@@ -50,7 +55,7 @@ func NewAppModel(store *state.ThreadStore, client *appserver.Client) AppModel {
 		tree:      NewTreeModel(store),
 		prefix:    NewPrefixHandler(),
 		help:      NewHelpModel(),
-		statusBar: NewStatusBar(),
+		statusBar: bar,
 	}
 }
 
@@ -168,7 +173,7 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		app.helpVisible = !app.helpVisible
 	case "n":
 		if !app.connected {
-			app.statusBar.SetError("not connected to app-server")
+			app.statusBar.SetError("waiting for app-server — is codex CLI installed?")
 			return app, nil
 		}
 		return app, app.createThreadCmd()
@@ -238,6 +243,17 @@ func (app *AppModel) handleCanvasArrow(msg tea.KeyMsg) {
 	}
 }
 
+func (app AppModel) canvasView() string {
+	threads := app.store.All()
+	if len(threads) > 0 {
+		return app.canvas.View()
+	}
+	if !app.connected {
+		return "Waiting for app-server connection..."
+	}
+	return "No active threads. Press 'n' to create one."
+}
+
 func (app AppModel) View() string {
 	title := titleStyle.Render("DJ — Codex TUI Visualizer")
 	status := app.statusBar.View()
@@ -254,7 +270,7 @@ func (app AppModel) View() string {
 		return title + "\n" + app.session.View() + "\n" + status
 	}
 
-	canvas := app.canvas.View()
+	canvas := app.canvasView()
 
 	if app.focus == FocusTree {
 		treeView := app.tree.View()
