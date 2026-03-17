@@ -39,6 +39,8 @@ func runApp(cmd *cobra.Command, args []string) error {
 	}
 
 	client := appserver.NewClient(cfg.AppServer.Command, cfg.AppServer.Args...)
+	defer client.Stop()
+
 	store := state.NewThreadStore()
 	app := tui.NewAppModel(store, tui.WithClient(client))
 
@@ -46,7 +48,5 @@ func runApp(cmd *cobra.Command, args []string) error {
 	app.SetProgram(program)
 
 	_, err = program.Run()
-
-	client.Stop()
 	return err
 }
