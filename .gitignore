@@ -1,6 +1,5 @@
 # Binaries
 /dj
-/cmd/harness/harness
 *.exe
 *.dll
 *.so
@@ -25,9 +24,6 @@ Thumbs.db
 # Environment
 .env
 .env.local
-
-# Docs
-docs/
 
 # Worktrees
 .worktrees/
