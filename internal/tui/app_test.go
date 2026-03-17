@@ -1,0 +1,58 @@
+package tui
+
+import (
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/robinojw/dj/internal/state"
+)
+
+func TestAppHandlesArrowKeys(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "First")
+	store.Add("t-2", "Second")
+
+	app := NewAppModel(store)
+
+	rightKey := tea.KeyMsg{Type: tea.KeyRight}
+	updated, _ := app.Update(rightKey)
+	appModel := updated.(AppModel)
+
+	if appModel.canvas.SelectedIndex() != 1 {
+		t.Errorf("expected index 1 after right, got %d", appModel.canvas.SelectedIndex())
+	}
+}
+
+func TestAppHandlesThreadStatusMsg(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "Initial")
+
+	app := NewAppModel(store)
+
+	msg := ThreadStatusMsg{
+		ThreadID: "t-1",
+		Status:   "active",
+		Title:    "Running",
+	}
+	app.Update(msg)
+
+	thread, _ := store.Get("t-1")
+	if thread.Status != "active" {
+		t.Errorf("expected active, got %s", thread.Status)
+	}
+	if thread.Title != "Running" {
+		t.Errorf("expected Running, got %s", thread.Title)
+	}
+}
+
+func TestAppHandlesQuit(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store)
+
+	quitKey := tea.KeyMsg{Type: tea.KeyCtrlC}
+	_, cmd := app.Update(quitKey)
+
+	if cmd == nil {
+		t.Fatal("expected quit command")
+	}
+}
