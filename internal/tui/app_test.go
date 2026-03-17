@@ -288,14 +288,30 @@ func TestAppSessionRefreshesOnMessage(t *testing.T) {
 	}
 }
 
-func TestAppNewThread(t *testing.T) {
+func TestAppNewThreadBlockedWhenDisconnected(t *testing.T) {
 	store := state.NewThreadStore()
 	app := NewAppModel(store, nil)
 
 	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
 	_, cmd := app.Update(nKey)
 
+	if cmd != nil {
+		t.Error("expected no command when disconnected")
+	}
+}
+
+func TestAppNewThreadAllowedWhenConnected(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store, nil)
+
+	connectedMsg := AppServerConnectedMsg{ServerName: "test", ServerVersion: "1.0"}
+	updated, _ := app.Update(connectedMsg)
+	app = updated.(AppModel)
+
+	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	_, cmd := app.Update(nKey)
+
 	if cmd == nil {
-		t.Error("expected command for thread creation")
+		t.Error("expected command for thread creation when connected")
 	}
 }

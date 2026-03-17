@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -35,6 +34,7 @@ type AppModel struct {
 	help      HelpModel
 	statusBar *StatusBar
 
+	connected   bool
 	menuVisible bool
 	helpVisible bool
 	focus       int
@@ -115,6 +115,7 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		app.statusBar.SetThreadCount(len(app.store.All()))
 		return app, nil
 	case AppServerConnectedMsg:
+		app.connected = true
 		app.statusBar.SetConnected(true)
 		return app, nil
 	case AppServerErrorMsg:
@@ -166,6 +167,10 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		app.helpVisible = !app.helpVisible
 	case "n":
+		if !app.connected {
+			app.statusBar.SetError("not connected to app-server")
+			return app, nil
+		}
 		return app, app.createThreadCmd()
 	}
 	return app, nil
@@ -173,13 +178,7 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (app AppModel) createThreadCmd() tea.Cmd {
 	return func() tea.Msg {
-		isDisconnected := app.client == nil || !app.client.Running()
-		if isDisconnected {
-			return AppServerErrorMsg{Err: fmt.Errorf("not connected to app-server")}
-		}
-
-		ctx := context.Background()
-		result, err := app.client.CreateThread(ctx, "New thread")
+		result, err := app.client.CreateThread(context.Background(), "New thread")
 		if err != nil {
 			return AppServerErrorMsg{Err: err}
 		}
