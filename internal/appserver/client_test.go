@@ -70,3 +70,31 @@ func TestClientSendAndRead(t *testing.T) {
 		t.Fatal("timeout waiting for message")
 	}
 }
+
+func TestClientCall(t *testing.T) {
+	// Use 'cat' — it echoes the request back as-is.
+	// The Call method will see the echoed message has a matching ID and treat it as a response.
+	client := NewClient("cat")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Start(ctx); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer client.Stop()
+
+	// Start dispatching
+	go client.ReadLoop(client.Dispatch)
+
+	// Call — cat echoes back the request, which has an id, so it resolves as a response
+	resp, err := client.Call(ctx, "test/method", json.RawMessage(`{"key":"val"}`))
+	if err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+
+	// The echo will have params (not result), but the call resolved because ID matched
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+}

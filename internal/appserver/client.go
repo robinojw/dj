@@ -126,3 +126,55 @@ func (c *Client) ReadLoop(handler func(Message)) {
 		handler(msg)
 	}
 }
+
+// Call sends a request and blocks until the response with the matching ID arrives.
+func (c *Client) Call(ctx context.Context, method string, params json.RawMessage) (*Message, error) {
+	id := int(c.nextID.Add(1))
+
+	ch := make(chan *Message, 1)
+	c.pending.Store(id, ch)
+	defer c.pending.Delete(id)
+
+	req := &Request{
+		JSONRPC: "2.0",
+		ID:      &id,
+		Method:  method,
+		Params:  params,
+	}
+
+	if err := c.Send(req); err != nil {
+		return nil, err
+	}
+
+	select {
+	case msg := <-ch:
+		return msg, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// Dispatch routes an incoming message to the appropriate handler:
+// - Messages with an ID matching a pending request -> resolve the pending Call
+// - Messages with an ID but no pending request -> server-to-client request (OnServerRequest)
+// - Messages without an ID -> notification (OnNotification)
+func (c *Client) Dispatch(msg Message) {
+	if msg.ID != nil {
+		// Check if this resolves a pending call
+		if ch, ok := c.pending.LoadAndDelete(*msg.ID); ok {
+			ch.(chan *Message) <- &msg
+			return
+		}
+
+		// Server-to-client request
+		if c.OnServerRequest != nil && msg.Method != "" {
+			c.OnServerRequest(*msg.ID, msg.Method, msg.Params)
+		}
+		return
+	}
+
+	// Notification (no ID)
+	if c.OnNotification != nil && msg.Method != "" {
+		c.OnNotification(msg.Method, msg.Params)
+	}
+}
