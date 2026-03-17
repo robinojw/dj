@@ -18,19 +18,19 @@ func WireEventBridge(router *appserver.NotificationRouter, sender MessageSender)
 		})
 	})
 
-	router.OnThreadMessageCreated(func(params appserver.ThreadMessageCreated) {
+	router.OnItemStarted(func(params appserver.ItemStarted) {
 		sender.Send(ThreadMessageMsg{
 			ThreadID:  params.ThreadID,
-			MessageID: params.MessageID,
+			MessageID: params.ItemID,
 			Role:      params.Role,
-			Content:   params.Content,
+			Content:   "",
 		})
 	})
 
-	router.OnThreadMessageDelta(func(params appserver.ThreadMessageDelta) {
+	router.OnItemMessageDelta(func(params appserver.ItemMessageDelta) {
 		sender.Send(ThreadDeltaMsg{
 			ThreadID:  params.ThreadID,
-			MessageID: params.MessageID,
+			MessageID: params.ItemID,
 			Delta:     params.Delta,
 		})
 	})

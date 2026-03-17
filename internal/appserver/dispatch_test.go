@@ -21,9 +21,8 @@ func TestDispatchRoutesNotificationToRouter(t *testing.T) {
 	client.Router = router
 
 	msg := Message{
-		JSONRPC: "2.0",
-		Method:  NotifyThreadStatusChanged,
-		Params:  json.RawMessage(`{"threadId":"t-1","status":"active","title":"Test"}`),
+		Method: NotifyThreadStatusChanged,
+		Params: json.RawMessage(`{"threadId":"t-1","status":"active","title":"Test"}`),
 	}
 	client.Dispatch(msg)
 
@@ -41,9 +40,8 @@ func TestDispatchFallsBackToOnNotification(t *testing.T) {
 	}
 
 	msg := Message{
-		JSONRPC: "2.0",
-		Method:  "custom/notification",
-		Params:  json.RawMessage(`{}`),
+		Method: "custom/notification",
+		Params: json.RawMessage(`{}`),
 	}
 	client.Dispatch(msg)
 

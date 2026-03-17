@@ -9,11 +9,11 @@ import (
 	"time"
 )
 
-func TestClientCreateThread(t *testing.T) {
+func TestClientStartThread(t *testing.T) {
 	clientRead, serverWrite := io.Pipe()
 	serverRead, clientWrite := io.Pipe()
 
-	go mockThreadCreateServer(t, serverRead, serverWrite)
+	go mockThreadStartServer(t, serverRead, serverWrite)
 
 	client := &Client{}
 	client.stdin = clientWrite
@@ -27,16 +27,16 @@ func TestClientCreateThread(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result, err := client.CreateThread(ctx, "Build a web app")
+	result, err := client.StartThread(ctx, "")
 	if err != nil {
-		t.Fatalf("CreateThread failed: %v", err)
+		t.Fatalf("StartThread failed: %v", err)
 	}
-	if result.ThreadID != "t-new-123" {
-		t.Errorf("expected t-new-123, got %s", result.ThreadID)
+	if result.Thread.ID != "thr_new_123" {
+		t.Errorf("expected thr_new_123, got %s", result.Thread.ID)
 	}
 }
 
-func mockThreadCreateServer(t *testing.T, reader *io.PipeReader, writer *io.PipeWriter) {
+func mockThreadStartServer(t *testing.T, reader *io.PipeReader, writer *io.PipeWriter) {
 	t.Helper()
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
@@ -52,9 +52,8 @@ func mockThreadCreateServer(t *testing.T, reader *io.PipeReader, writer *io.Pipe
 	}
 
 	resp := Message{
-		JSONRPC: "2.0",
-		ID:      req.ID,
-		Result:  json.RawMessage(`{"threadId":"t-new-123"}`),
+		ID:     req.ID,
+		Result: json.RawMessage(`{"thread":{"id":"thr_new_123"}}`),
 	}
 	data, _ := json.Marshal(resp)
 	data = append(data, '\n')
@@ -105,9 +104,8 @@ func mockThreadListServer(t *testing.T, reader *io.PipeReader, writer *io.PipeWr
 
 	threadList := `{"threads":[{"id":"t-1","status":"active","title":"A"},{"id":"t-2","status":"idle","title":"B"}]}`
 	resp := Message{
-		JSONRPC: "2.0",
-		ID:      req.ID,
-		Result:  json.RawMessage(threadList),
+		ID:     req.ID,
+		Result: json.RawMessage(threadList),
 	}
 	data, _ := json.Marshal(resp)
 	data = append(data, '\n')

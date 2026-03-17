@@ -140,10 +140,9 @@ func (c *Client) Call(ctx context.Context, method string, params json.RawMessage
 	defer c.pending.Delete(id)
 
 	req := &Request{
-		JSONRPC: "2.0",
-		ID:      &id,
-		Method:  method,
-		Params:  params,
+		ID:     &id,
+		Method: method,
+		Params: params,
 	}
 
 	if err := c.Send(req); err != nil {
@@ -237,10 +236,11 @@ func (c *Client) Initialize(ctx context.Context) (*ServerCapabilities, error) {
 		}
 	}
 
-	// Send the initialized notification (no id, no response expected)
+	// Send the initialized notification (no id, no response expected).
+	// Codex requires params: {} even for empty notifications.
 	notif := &Request{
-		JSONRPC: "2.0",
-		Method:  "initialized",
+		Method: "initialized",
+		Params: json.RawMessage(`{}`),
 	}
 	if err := c.Send(notif); err != nil {
 		return nil, fmt.Errorf("send initialized: %w", err)

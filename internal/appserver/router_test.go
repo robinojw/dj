@@ -30,16 +30,16 @@ func TestRouterIgnoresUnregisteredMethod(t *testing.T) {
 	router.Handle("unknown/method", json.RawMessage(`{}`))
 }
 
-func TestRouterDispatchesMessageDelta(t *testing.T) {
+func TestRouterDispatchesItemMessageDelta(t *testing.T) {
 	router := NewNotificationRouter()
 
 	var receivedDelta string
-	router.OnThreadMessageDelta(func(params ThreadMessageDelta) {
+	router.OnItemMessageDelta(func(params ItemMessageDelta) {
 		receivedDelta = params.Delta
 	})
 
-	raw := json.RawMessage(`{"threadId":"t-1","messageId":"m-1","delta":"hello"}`)
-	router.Handle(NotifyThreadMessageDelta, raw)
+	raw := json.RawMessage(`{"threadId":"t-1","itemId":"item-1","delta":"hello"}`)
+	router.Handle(NotifyItemMessageDelta, raw)
 
 	if receivedDelta != "hello" {
 		t.Errorf("expected hello, got %s", receivedDelta)
@@ -59,5 +59,37 @@ func TestRouterDispatchesCommandOutput(t *testing.T) {
 
 	if receivedData != "output line\n" {
 		t.Errorf("expected output, got %s", receivedData)
+	}
+}
+
+func TestRouterDispatchesItemStarted(t *testing.T) {
+	router := NewNotificationRouter()
+
+	var receivedRole string
+	router.OnItemStarted(func(params ItemStarted) {
+		receivedRole = params.Role
+	})
+
+	raw := json.RawMessage(`{"threadId":"t-1","itemId":"item-1","role":"assistant","type":"message"}`)
+	router.Handle(NotifyItemStarted, raw)
+
+	if receivedRole != "assistant" {
+		t.Errorf("expected assistant, got %s", receivedRole)
+	}
+}
+
+func TestRouterDispatchesTurnCompleted(t *testing.T) {
+	router := NewNotificationRouter()
+
+	var receivedTurnID string
+	router.OnTurnCompleted(func(params TurnCompleted) {
+		receivedTurnID = params.TurnID
+	})
+
+	raw := json.RawMessage(`{"threadId":"t-1","turnId":"turn-1"}`)
+	router.Handle(NotifyTurnCompleted, raw)
+
+	if receivedTurnID != "turn-1" {
+		t.Errorf("expected turn-1, got %s", receivedTurnID)
 	}
 }

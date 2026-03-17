@@ -35,6 +35,49 @@ func TestBridgeThreadStatusChanged(t *testing.T) {
 	}
 }
 
+func TestBridgeItemStarted(t *testing.T) {
+	sender := &mockSender{}
+	router := appserver.NewNotificationRouter()
+	WireEventBridge(router, sender)
+
+	router.Handle(appserver.NotifyItemStarted,
+		[]byte(`{"threadId":"t-1","itemId":"item-1","role":"assistant","type":"message"}`))
+
+	if len(sender.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(sender.messages))
+	}
+	msg, ok := sender.messages[0].(ThreadMessageMsg)
+	if !ok {
+		t.Fatalf("expected ThreadMessageMsg, got %T", sender.messages[0])
+	}
+	if msg.Role != "assistant" {
+		t.Errorf("expected assistant, got %s", msg.Role)
+	}
+	if msg.MessageID != "item-1" {
+		t.Errorf("expected item-1, got %s", msg.MessageID)
+	}
+}
+
+func TestBridgeItemMessageDelta(t *testing.T) {
+	sender := &mockSender{}
+	router := appserver.NewNotificationRouter()
+	WireEventBridge(router, sender)
+
+	router.Handle(appserver.NotifyItemMessageDelta,
+		[]byte(`{"threadId":"t-1","itemId":"item-1","delta":"hello"}`))
+
+	if len(sender.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(sender.messages))
+	}
+	msg, ok := sender.messages[0].(ThreadDeltaMsg)
+	if !ok {
+		t.Fatalf("expected ThreadDeltaMsg, got %T", sender.messages[0])
+	}
+	if msg.Delta != "hello" {
+		t.Errorf("expected hello, got %s", msg.Delta)
+	}
+}
+
 func TestBridgeCommandOutput(t *testing.T) {
 	sender := &mockSender{}
 	router := appserver.NewNotificationRouter()

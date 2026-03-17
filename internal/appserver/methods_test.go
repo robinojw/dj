@@ -8,14 +8,17 @@ func TestMethodConstants(t *testing.T) {
 		constant string
 		expected string
 	}{
-		{"ThreadCreate", MethodThreadCreate, "thread/create"},
+		{"ThreadStart", MethodThreadStart, "thread/start"},
 		{"ThreadList", MethodThreadList, "thread/list"},
-		{"ThreadDelete", MethodThreadDelete, "thread/delete"},
-		{"ThreadSendMessage", MethodThreadSendMessage, "thread/sendMessage"},
-		{"CommandExec", MethodCommandExec, "command/exec"},
+		{"ThreadArchive", MethodThreadArchive, "thread/archive"},
+		{"TurnStart", MethodTurnStart, "turn/start"},
+		{"TurnInterrupt", MethodTurnInterrupt, "turn/interrupt"},
 		{"NotifyThreadStatus", NotifyThreadStatusChanged, "thread/status/changed"},
-		{"NotifyThreadMessage", NotifyThreadMessageCreated, "thread/message/created"},
-		{"NotifyMessageDelta", NotifyThreadMessageDelta, "thread/message/delta"},
+		{"NotifyItemStarted", NotifyItemStarted, "item/started"},
+		{"NotifyItemCompleted", NotifyItemCompleted, "item/completed"},
+		{"NotifyItemMessageDelta", NotifyItemMessageDelta, "item/agentMessage/delta"},
+		{"NotifyTurnStarted", NotifyTurnStarted, "turn/started"},
+		{"NotifyTurnCompleted", NotifyTurnCompleted, "turn/completed"},
 		{"NotifyCommandOutput", NotifyCommandOutput, "command/output"},
 		{"NotifyCommandFinished", NotifyCommandFinished, "command/finished"},
 	}

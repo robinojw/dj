@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-func TestThreadCreateParamsMarshal(t *testing.T) {
-	params := ThreadCreateParams{
-		Instructions: "Build a web server",
+func TestThreadStartParamsMarshal(t *testing.T) {
+	params := ThreadStartParams{
+		Model: "gpt-4o",
 	}
 	data, err := json.Marshal(params)
 	if err != nil {
@@ -15,19 +15,32 @@ func TestThreadCreateParamsMarshal(t *testing.T) {
 	}
 	var parsed map[string]any
 	json.Unmarshal(data, &parsed)
-	if parsed["instructions"] != "Build a web server" {
-		t.Errorf("expected instructions, got %v", parsed["instructions"])
+	if parsed["model"] != "gpt-4o" {
+		t.Errorf("expected model gpt-4o, got %v", parsed["model"])
 	}
 }
 
-func TestThreadCreateResultUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-abc123"}`
-	var result ThreadCreateResult
+func TestThreadStartParamsOmitsEmptyModel(t *testing.T) {
+	params := ThreadStartParams{}
+	data, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	json.Unmarshal(data, &parsed)
+	if _, hasModel := parsed["model"]; hasModel {
+		t.Error("expected model to be omitted when empty")
+	}
+}
+
+func TestThreadStartResultUnmarshal(t *testing.T) {
+	raw := `{"thread":{"id":"thr_abc123"}}`
+	var result ThreadStartResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.ThreadID != "t-abc123" {
-		t.Errorf("expected t-abc123, got %s", result.ThreadID)
+	if result.Thread.ID != "thr_abc123" {
+		t.Errorf("expected thr_abc123, got %s", result.Thread.ID)
 	}
 }
 

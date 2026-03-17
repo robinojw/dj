@@ -6,22 +6,22 @@ import (
 	"fmt"
 )
 
-func (c *Client) CreateThread(ctx context.Context, instructions string) (*ThreadCreateResult, error) {
-	params, _ := json.Marshal(ThreadCreateParams{
-		Instructions: instructions,
+func (c *Client) StartThread(ctx context.Context, model string) (*ThreadStartResult, error) {
+	params, _ := json.Marshal(ThreadStartParams{
+		Model: model,
 	})
 
-	resp, err := c.Call(ctx, MethodThreadCreate, params)
+	resp, err := c.Call(ctx, MethodThreadStart, params)
 	if err != nil {
-		return nil, fmt.Errorf("thread/create: %w", err)
+		return nil, fmt.Errorf("thread/start: %w", err)
 	}
 	if resp.Error != nil {
-		return nil, fmt.Errorf("thread/create: %w", resp.Error)
+		return nil, fmt.Errorf("thread/start: %w", resp.Error)
 	}
 
-	var result ThreadCreateResult
+	var result ThreadStartResult
 	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return nil, fmt.Errorf("unmarshal thread/create result: %w", err)
+		return nil, fmt.Errorf("unmarshal thread/start result: %w", err)
 	}
 	return &result, nil
 }
@@ -42,17 +42,17 @@ func (c *Client) ListThreads(ctx context.Context) (*ThreadListResult, error) {
 	return &result, nil
 }
 
-func (c *Client) DeleteThread(ctx context.Context, threadID string) error {
-	params, _ := json.Marshal(ThreadDeleteParams{
+func (c *Client) ArchiveThread(ctx context.Context, threadID string) error {
+	params, _ := json.Marshal(ThreadArchiveParams{
 		ThreadID: threadID,
 	})
 
-	resp, err := c.Call(ctx, MethodThreadDelete, params)
+	resp, err := c.Call(ctx, MethodThreadArchive, params)
 	if err != nil {
-		return fmt.Errorf("thread/delete: %w", err)
+		return fmt.Errorf("thread/archive: %w", err)
 	}
 	if resp.Error != nil {
-		return fmt.Errorf("thread/delete: %w", resp.Error)
+		return fmt.Errorf("thread/archive: %w", resp.Error)
 	}
 	return nil
 }

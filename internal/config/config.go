@@ -28,7 +28,7 @@ func Load(path string) (*Config, error) {
 	viperInstance.SetConfigType("toml")
 
 	viperInstance.SetDefault("appserver.command", DefaultAppServerCommand)
-	viperInstance.SetDefault("appserver.args", []string{"app-server", "--listen", "stdio://"})
+	viperInstance.SetDefault("appserver.args", []string{"app-server"})
 	viperInstance.SetDefault("ui.theme", DefaultTheme)
 
 	if path != "" {

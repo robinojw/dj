@@ -19,28 +19,64 @@ func TestThreadStatusChangedUnmarshal(t *testing.T) {
 	}
 }
 
-func TestThreadMessageCreatedUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-1","messageId":"m-1","role":"assistant","content":"Hello"}`
-	var params ThreadMessageCreated
+func TestItemStartedUnmarshal(t *testing.T) {
+	raw := `{"threadId":"t-1","itemId":"item-1","role":"assistant","type":"message"}`
+	var params ItemStarted
 	if err := json.Unmarshal([]byte(raw), &params); err != nil {
 		t.Fatal(err)
 	}
 	if params.Role != "assistant" {
 		t.Errorf("expected assistant, got %s", params.Role)
 	}
-	if params.Content != "Hello" {
-		t.Errorf("expected Hello, got %s", params.Content)
+	if params.Type != "message" {
+		t.Errorf("expected message, got %s", params.Type)
+	}
+	if params.ItemID != "item-1" {
+		t.Errorf("expected item-1, got %s", params.ItemID)
 	}
 }
 
-func TestThreadMessageDeltaUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-1","messageId":"m-1","delta":"more text"}`
-	var params ThreadMessageDelta
+func TestItemCompletedUnmarshal(t *testing.T) {
+	raw := `{"threadId":"t-1","itemId":"item-1","content":"Hello world"}`
+	var params ItemCompleted
+	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+		t.Fatal(err)
+	}
+	if params.Content != "Hello world" {
+		t.Errorf("expected Hello world, got %s", params.Content)
+	}
+}
+
+func TestItemMessageDeltaUnmarshal(t *testing.T) {
+	raw := `{"threadId":"t-1","itemId":"item-1","delta":"more text"}`
+	var params ItemMessageDelta
 	if err := json.Unmarshal([]byte(raw), &params); err != nil {
 		t.Fatal(err)
 	}
 	if params.Delta != "more text" {
 		t.Errorf("expected 'more text', got %s", params.Delta)
+	}
+}
+
+func TestTurnStartedUnmarshal(t *testing.T) {
+	raw := `{"threadId":"t-1","turnId":"turn-1"}`
+	var params TurnStarted
+	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+		t.Fatal(err)
+	}
+	if params.TurnID != "turn-1" {
+		t.Errorf("expected turn-1, got %s", params.TurnID)
+	}
+}
+
+func TestTurnCompletedUnmarshal(t *testing.T) {
+	raw := `{"threadId":"t-1","turnId":"turn-1"}`
+	var params TurnCompleted
+	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+		t.Fatal(err)
+	}
+	if params.TurnID != "turn-1" {
+		t.Errorf("expected turn-1, got %s", params.TurnID)
 	}
 }
 

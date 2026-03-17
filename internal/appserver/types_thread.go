@@ -7,15 +7,19 @@ const (
 	ThreadStatusError     = "error"
 )
 
-type ThreadCreateParams struct {
-	Instructions string `json:"instructions"`
+type ThreadStartParams struct {
+	Model string `json:"model,omitempty"`
 }
 
-type ThreadCreateResult struct {
-	ThreadID string `json:"threadId"`
+type ThreadStartResult struct {
+	Thread ThreadInfo `json:"thread"`
 }
 
-type ThreadDeleteParams struct {
+type ThreadInfo struct {
+	ID string `json:"id"`
+}
+
+type ThreadArchiveParams struct {
 	ThreadID string `json:"threadId"`
 }
 
@@ -29,11 +33,11 @@ type ThreadSummary struct {
 	Title  string `json:"title"`
 }
 
-type ThreadSendMessageParams struct {
+type TurnStartParams struct {
 	ThreadID string `json:"threadId"`
 	Content  string `json:"content"`
 }
 
-type ThreadSendMessageResult struct {
-	MessageID string `json:"messageId"`
+type TurnStartResult struct {
+	TurnID string `json:"turnId"`
 }

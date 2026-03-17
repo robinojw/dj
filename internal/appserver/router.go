@@ -30,9 +30,9 @@ func (router *NotificationRouter) OnThreadStatusChanged(fn func(ThreadStatusChan
 	}
 }
 
-func (router *NotificationRouter) OnThreadMessageCreated(fn func(ThreadMessageCreated)) {
-	router.handlers[NotifyThreadMessageCreated] = func(raw json.RawMessage) {
-		var params ThreadMessageCreated
+func (router *NotificationRouter) OnItemStarted(fn func(ItemStarted)) {
+	router.handlers[NotifyItemStarted] = func(raw json.RawMessage) {
+		var params ItemStarted
 		if err := json.Unmarshal(raw, &params); err != nil {
 			return
 		}
@@ -40,9 +40,39 @@ func (router *NotificationRouter) OnThreadMessageCreated(fn func(ThreadMessageCr
 	}
 }
 
-func (router *NotificationRouter) OnThreadMessageDelta(fn func(ThreadMessageDelta)) {
-	router.handlers[NotifyThreadMessageDelta] = func(raw json.RawMessage) {
-		var params ThreadMessageDelta
+func (router *NotificationRouter) OnItemCompleted(fn func(ItemCompleted)) {
+	router.handlers[NotifyItemCompleted] = func(raw json.RawMessage) {
+		var params ItemCompleted
+		if err := json.Unmarshal(raw, &params); err != nil {
+			return
+		}
+		fn(params)
+	}
+}
+
+func (router *NotificationRouter) OnItemMessageDelta(fn func(ItemMessageDelta)) {
+	router.handlers[NotifyItemMessageDelta] = func(raw json.RawMessage) {
+		var params ItemMessageDelta
+		if err := json.Unmarshal(raw, &params); err != nil {
+			return
+		}
+		fn(params)
+	}
+}
+
+func (router *NotificationRouter) OnTurnStarted(fn func(TurnStarted)) {
+	router.handlers[NotifyTurnStarted] = func(raw json.RawMessage) {
+		var params TurnStarted
+		if err := json.Unmarshal(raw, &params); err != nil {
+			return
+		}
+		fn(params)
+	}
+}
+
+func (router *NotificationRouter) OnTurnCompleted(fn func(TurnCompleted)) {
+	router.handlers[NotifyTurnCompleted] = func(raw json.RawMessage) {
+		var params TurnCompleted
 		if err := json.Unmarshal(raw, &params); err != nil {
 			return
 		}

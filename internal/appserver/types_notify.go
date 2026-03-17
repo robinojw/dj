@@ -6,17 +6,33 @@ type ThreadStatusChanged struct {
 	Title    string `json:"title"`
 }
 
-type ThreadMessageCreated struct {
-	ThreadID  string `json:"threadId"`
-	MessageID string `json:"messageId"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
+type ItemStarted struct {
+	ThreadID string `json:"threadId"`
+	ItemID   string `json:"itemId"`
+	Role     string `json:"role"`
+	Type     string `json:"type"`
 }
 
-type ThreadMessageDelta struct {
-	ThreadID  string `json:"threadId"`
-	MessageID string `json:"messageId"`
-	Delta     string `json:"delta"`
+type ItemCompleted struct {
+	ThreadID string `json:"threadId"`
+	ItemID   string `json:"itemId"`
+	Content  string `json:"content"`
+}
+
+type ItemMessageDelta struct {
+	ThreadID string `json:"threadId"`
+	ItemID   string `json:"itemId"`
+	Delta    string `json:"delta"`
+}
+
+type TurnStarted struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+}
+
+type TurnCompleted struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
 }
 
 type CommandOutput struct {

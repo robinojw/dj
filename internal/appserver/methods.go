@@ -1,17 +1,20 @@
 package appserver
 
 const (
-	MethodThreadCreate      = "thread/create"
-	MethodThreadList        = "thread/list"
-	MethodThreadDelete      = "thread/delete"
-	MethodThreadSendMessage = "thread/sendMessage"
-	MethodCommandExec       = "command/exec"
+	MethodThreadStart   = "thread/start"
+	MethodThreadList    = "thread/list"
+	MethodThreadArchive = "thread/archive"
+	MethodTurnStart     = "turn/start"
+	MethodTurnInterrupt = "turn/interrupt"
 )
 
 const (
-	NotifyThreadStatusChanged  = "thread/status/changed"
-	NotifyThreadMessageCreated = "thread/message/created"
-	NotifyThreadMessageDelta   = "thread/message/delta"
-	NotifyCommandOutput        = "command/output"
-	NotifyCommandFinished      = "command/finished"
+	NotifyThreadStatusChanged = "thread/status/changed"
+	NotifyItemStarted         = "item/started"
+	NotifyItemCompleted       = "item/completed"
+	NotifyItemMessageDelta    = "item/agentMessage/delta"
+	NotifyTurnStarted         = "turn/started"
+	NotifyTurnCompleted       = "turn/completed"
+	NotifyCommandOutput       = "command/output"
+	NotifyCommandFinished     = "command/finished"
 )

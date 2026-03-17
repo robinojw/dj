@@ -10,8 +10,6 @@ import (
 )
 
 func TestClientStartStop(t *testing.T) {
-	// Use 'cat' as a mock app-server: it reads stdin and echoes to stdout.
-	// This verifies process lifecycle without a real codex binary.
 	client := NewClient("cat")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -35,7 +33,6 @@ func TestClientStartStop(t *testing.T) {
 }
 
 func TestClientSendAndRead(t *testing.T) {
-	// 'cat' echoes back what we write — simulates a response
 	client := NewClient("cat")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -46,18 +43,15 @@ func TestClientSendAndRead(t *testing.T) {
 	}
 	defer client.Stop()
 
-	// Start the read loop
 	msgs := make(chan Message, 10)
 	go client.ReadLoop(func(msg Message) {
 		msgs <- msg
 	})
 
-	// Send a JSON-RPC request — cat will echo it back
 	req := &Request{
-		JSONRPC: "2.0",
-		ID:      intPtr(1),
-		Method:  "test/echo",
-		Params:  json.RawMessage(`{"hello":"world"}`),
+		ID:     intPtr(1),
+		Method: "test/echo",
+		Params: json.RawMessage(`{"hello":"world"}`),
 	}
 	if err := client.Send(req); err != nil {
 		t.Fatalf("Send failed: %v", err)
@@ -74,8 +68,6 @@ func TestClientSendAndRead(t *testing.T) {
 }
 
 func TestClientCall(t *testing.T) {
-	// Use 'cat' — it echoes the request back as-is.
-	// The Call method will see the echoed message has a matching ID and treat it as a response.
 	client := NewClient("cat")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -86,34 +78,26 @@ func TestClientCall(t *testing.T) {
 	}
 	defer client.Stop()
 
-	// Start dispatching
 	go client.ReadLoop(client.Dispatch)
 
-	// Call — cat echoes back the request, which has an id, so it resolves as a response
 	resp, err := client.Call(ctx, "test/method", json.RawMessage(`{"key":"val"}`))
 	if err != nil {
 		t.Fatalf("Call failed: %v", err)
 	}
 
-	// The echo will have params (not result), but the call resolved because ID matched
 	if resp == nil {
 		t.Fatal("expected non-nil response")
 	}
 }
 
 func TestInitializeHandshake(t *testing.T) {
-	// Set up bidirectional pipes to simulate app-server
-	// client writes -> serverRead, serverWrite -> clientRead
 	clientRead, serverWrite := io.Pipe()
 	serverRead, clientWrite := io.Pipe()
 
-	// Mock server: reads initialize request, writes back capabilities response,
-	// then reads the initialized notification
 	go func() {
 		scanner := bufio.NewScanner(serverRead)
 		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
-		// Read initialize request
 		if !scanner.Scan() {
 			t.Error("mock server: failed to read initialize request")
 			return
@@ -128,17 +112,14 @@ func TestInitializeHandshake(t *testing.T) {
 			return
 		}
 
-		// Write capabilities response
 		resp := Message{
-			JSONRPC: "2.0",
-			ID:      req.ID,
-			Result:  json.RawMessage(`{"serverInfo":{"name":"codex-app-server","version":"0.1.0"}}`),
+			ID:     req.ID,
+			Result: json.RawMessage(`{"serverInfo":{"name":"codex-app-server","version":"0.1.0"}}`),
 		}
 		data, _ := json.Marshal(resp)
 		data = append(data, '\n')
 		serverWrite.Write(data)
 
-		// Read initialized notification
 		if !scanner.Scan() {
 			t.Error("mock server: failed to read initialized notification")
 			return
@@ -151,9 +132,11 @@ func TestInitializeHandshake(t *testing.T) {
 		if notif.Method != "initialized" {
 			t.Errorf("mock server: expected method initialized, got %s", notif.Method)
 		}
+		if notif.Params == nil {
+			t.Error("mock server: initialized notification must include params")
+		}
 	}()
 
-	// Set up client with our pipes instead of a real process
 	client := &Client{}
 	client.stdin = clientWrite
 	client.stdout = clientRead

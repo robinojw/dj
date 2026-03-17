@@ -183,13 +183,13 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (app AppModel) createThreadCmd() tea.Cmd {
 	return func() tea.Msg {
-		result, err := app.client.CreateThread(context.Background(), "New thread")
+		result, err := app.client.StartThread(context.Background(), "")
 		if err != nil {
 			return AppServerErrorMsg{Err: err}
 		}
 
 		return ThreadCreatedMsg{
-			ThreadID: result.ThreadID,
+			ThreadID: result.Thread.ID,
 			Title:    "New thread",
 		}
 	}
