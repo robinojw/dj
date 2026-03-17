@@ -17,6 +17,7 @@ type ThreadState struct {
 	ID            string
 	Title         string
 	Status        string
+	ParentID      string
 	Messages      []ChatMessage
 	CommandOutput map[string]string
 }

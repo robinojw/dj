@@ -45,6 +45,45 @@ func TestAppHandlesThreadStatusMsg(t *testing.T) {
 	}
 }
 
+func TestAppToggleFocus(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "Test")
+
+	app := NewAppModel(store)
+
+	if app.Focus() != FocusCanvas {
+		t.Errorf("expected canvas focus, got %d", app.Focus())
+	}
+
+	tabKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}
+	updated, _ := app.Update(tabKey)
+	appModel := updated.(AppModel)
+
+	if appModel.Focus() != FocusTree {
+		t.Errorf("expected tree focus, got %d", appModel.Focus())
+	}
+}
+
+func TestAppTreeNavigationWhenFocused(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "First")
+	store.Add("t-2", "Second")
+
+	app := NewAppModel(store)
+
+	toggleKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}
+	updated, _ := app.Update(toggleKey)
+	app = updated.(AppModel)
+
+	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	updated, _ = app.Update(downKey)
+	app = updated.(AppModel)
+
+	if app.tree.SelectedID() != "t-2" {
+		t.Errorf("expected tree at t-2, got %s", app.tree.SelectedID())
+	}
+}
+
 func TestAppHandlesQuit(t *testing.T) {
 	store := state.NewThreadStore()
 	app := NewAppModel(store)

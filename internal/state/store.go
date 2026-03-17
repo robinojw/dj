@@ -26,6 +26,16 @@ func (store *ThreadStore) Add(id string, title string) {
 	store.order = append(store.order, id)
 }
 
+func (store *ThreadStore) AddWithParent(id string, title string, parentID string) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	thread := NewThreadState(id, title)
+	thread.ParentID = parentID
+	store.threads[id] = thread
+	store.order = append(store.order, id)
+}
+
 func (store *ThreadStore) Get(id string) (*ThreadState, bool) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
@@ -79,6 +89,34 @@ func (store *ThreadStore) UpdateStatus(id string, status string, title string) {
 	if title != "" {
 		thread.Title = title
 	}
+}
+
+func (store *ThreadStore) Children(parentID string) []*ThreadState {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	var children []*ThreadState
+	for _, id := range store.order {
+		thread := store.threads[id]
+		if thread.ParentID == parentID {
+			children = append(children, thread)
+		}
+	}
+	return children
+}
+
+func (store *ThreadStore) Roots() []*ThreadState {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	var roots []*ThreadState
+	for _, id := range store.order {
+		thread := store.threads[id]
+		if thread.ParentID == "" {
+			roots = append(roots, thread)
+		}
+	}
+	return roots
 }
 
 func removeFromSlice(slice []string, target string) []string {
