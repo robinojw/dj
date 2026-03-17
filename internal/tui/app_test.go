@@ -264,6 +264,35 @@ func TestAppHelpEscCloses(t *testing.T) {
 	}
 }
 
+func TestAppNewThread(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store)
+
+	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	_, cmd := app.Update(nKey)
+
+	if cmd == nil {
+		t.Error("expected command for thread creation")
+	}
+}
+
+func TestAppHandlesThreadCreatedMsg(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store)
+
+	msg := ThreadCreatedMsg{ThreadID: "t-new", Title: "New Thread"}
+	updated, _ := app.Update(msg)
+	_ = updated.(AppModel)
+
+	threads := store.All()
+	if len(threads) != 1 {
+		t.Fatalf("expected 1 thread, got %d", len(threads))
+	}
+	if threads[0].ID != "t-new" {
+		t.Errorf("expected thread t-new, got %s", threads[0].ID)
+	}
+}
+
 func TestAppSessionRefreshesOnMessage(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")

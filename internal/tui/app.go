@@ -125,6 +125,10 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AppServerErrorMsg:
 		app.statusBar.SetError(msg.Error())
 		return app, nil
+	case ThreadCreatedMsg:
+		app.store.Add(msg.ThreadID, msg.Title)
+		app.statusBar.SetThreadCount(len(app.store.All()))
+		return app, nil
 	case ThreadStatusMsg:
 		app.store.UpdateStatus(msg.ThreadID, msg.Status, msg.Title)
 		return app, nil
@@ -177,10 +181,32 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "t":
 		app.toggleFocus()
+	case "n":
+		return app, app.createThread()
 	case "?":
 		app.helpVisible = !app.helpVisible
 	}
 	return app, nil
+}
+
+func (app AppModel) createThread() tea.Cmd {
+	return func() tea.Msg {
+		if app.client == nil {
+			return ThreadCreatedMsg{
+				ThreadID: "local",
+				Title:    "New Thread",
+			}
+		}
+		ctx := context.Background()
+		result, err := app.client.CreateThread(ctx, "New Thread")
+		if err != nil {
+			return AppServerErrorMsg{Err: err}
+		}
+		return ThreadCreatedMsg{
+			ThreadID: result.ThreadID,
+			Title:    "New Thread",
+		}
+	}
 }
 
 func (app AppModel) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
