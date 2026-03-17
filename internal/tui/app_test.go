@@ -227,6 +227,43 @@ func TestAppMenuNavigation(t *testing.T) {
 	}
 }
 
+func TestAppHelpToggle(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store)
+
+	helpKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}
+	updated, _ := app.Update(helpKey)
+	appModel := updated.(AppModel)
+
+	if !appModel.HelpVisible() {
+		t.Error("expected help to be visible")
+	}
+
+	updated, _ = appModel.Update(helpKey)
+	appModel = updated.(AppModel)
+
+	if appModel.HelpVisible() {
+		t.Error("expected help to be hidden")
+	}
+}
+
+func TestAppHelpEscCloses(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store)
+
+	helpKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}
+	updated, _ := app.Update(helpKey)
+	appModel := updated.(AppModel)
+
+	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	updated, _ = appModel.Update(escKey)
+	appModel = updated.(AppModel)
+
+	if appModel.HelpVisible() {
+		t.Error("expected help hidden after Esc")
+	}
+}
+
 func TestAppSessionRefreshesOnMessage(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")

@@ -24,7 +24,9 @@ type AppModel struct {
 	session     *SessionModel
 	prefix      *PrefixHandler
 	menu        MenuModel
+	help        HelpModel
 	menuVisible bool
+	helpVisible bool
 	focus       int
 	width       int
 	height      int
@@ -36,11 +38,16 @@ func NewAppModel(store *state.ThreadStore) AppModel {
 		canvas: NewCanvasModel(store),
 		tree:   NewTreeModel(store),
 		prefix: NewPrefixHandler(),
+		help:   NewHelpModel(),
 	}
 }
 
 func (app AppModel) Focus() int {
 	return app.focus
+}
+
+func (app AppModel) HelpVisible() bool {
+	return app.helpVisible
 }
 
 func (app AppModel) Init() tea.Cmd {
@@ -72,6 +79,10 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if app.helpVisible {
+		return app.handleHelpKey(msg)
+	}
+
 	if app.menuVisible {
 		return app.handleMenuKey(msg)
 	}
@@ -103,8 +114,20 @@ func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.String() == "t" {
+	switch msg.String() {
+	case "t":
 		app.toggleFocus()
+	case "?":
+		app.helpVisible = !app.helpVisible
+	}
+	return app, nil
+}
+
+func (app AppModel) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	isToggle := msg.Type == tea.KeyRunes && msg.String() == "?"
+	isEsc := msg.Type == tea.KeyEsc
+	if isToggle || isEsc {
+		app.helpVisible = false
 	}
 	return app, nil
 }
@@ -245,6 +268,10 @@ func (app AppModel) handleCommandOutput(msg CommandOutputMsg) (tea.Model, tea.Cm
 
 func (app AppModel) View() string {
 	title := titleStyle.Render("DJ — Codex TUI Visualizer")
+
+	if app.helpVisible {
+		return title + "\n" + app.help.View() + "\n"
+	}
 
 	if app.menuVisible {
 		return title + "\n" + app.menu.View() + "\n"
