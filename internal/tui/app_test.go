@@ -95,3 +95,74 @@ func TestAppHandlesQuit(t *testing.T) {
 		t.Fatal("expected quit command")
 	}
 }
+
+func TestAppEnterOpensSession(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "Test Task")
+
+	app := NewAppModel(store)
+
+	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	updated, _ := app.Update(enterKey)
+	appModel := updated.(AppModel)
+
+	if appModel.Focus() != FocusSession {
+		t.Errorf("expected session focus, got %d", appModel.Focus())
+	}
+}
+
+func TestAppEscClosesSession(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "Test Task")
+
+	app := NewAppModel(store)
+
+	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	updated, _ := app.Update(enterKey)
+	appModel := updated.(AppModel)
+
+	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	updated, _ = appModel.Update(escKey)
+	appModel = updated.(AppModel)
+
+	if appModel.Focus() != FocusCanvas {
+		t.Errorf("expected canvas focus after Esc, got %d", appModel.Focus())
+	}
+}
+
+func TestAppEnterWithNoThreadsDoesNothing(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store)
+
+	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	updated, _ := app.Update(enterKey)
+	appModel := updated.(AppModel)
+
+	if appModel.Focus() != FocusCanvas {
+		t.Errorf("expected canvas focus when no threads, got %d", appModel.Focus())
+	}
+}
+
+func TestAppSessionRefreshesOnMessage(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "Test")
+
+	app := NewAppModel(store)
+
+	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	updated, _ := app.Update(enterKey)
+	app = updated.(AppModel)
+
+	msg := ThreadMessageMsg{
+		ThreadID:  "t-1",
+		MessageID: "m-1",
+		Role:      "user",
+		Content:   "Hello",
+	}
+	updated, _ = app.Update(msg)
+	app = updated.(AppModel)
+
+	if app.Focus() != FocusSession {
+		t.Errorf("expected session focus maintained, got %d", app.Focus())
+	}
+}
