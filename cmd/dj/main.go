@@ -41,11 +41,14 @@ func runApp(cmd *cobra.Command, args []string) error {
 	client := appserver.NewClient(cfg.AppServer.Command, cfg.AppServer.Args...)
 	defer client.Stop()
 
+	router := appserver.NewNotificationRouter()
+	client.Router = router
+
 	store := state.NewThreadStore()
 	app := tui.NewAppModel(store, client)
 
 	program := tea.NewProgram(app, tea.WithAltScreen())
-	app.SetProgram(program)
+	tui.WireEventBridge(router, program)
 
 	_, err = program.Run()
 	return err

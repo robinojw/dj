@@ -3,12 +3,15 @@ package tui
 import (
 	"context"
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/robinojw/dj/internal/appserver"
 	"github.com/robinojw/dj/internal/state"
 )
+
+const connectTimeout = 10 * time.Second
 
 const (
 	FocusCanvas = iota
@@ -22,16 +25,16 @@ var titleStyle = lipgloss.NewStyle().
 	MarginBottom(1)
 
 type AppModel struct {
-	store       *state.ThreadStore
-	client      *appserver.Client
-	program     *tea.Program
-	canvas      CanvasModel
-	tree        TreeModel
-	session     *SessionModel
-	prefix      *PrefixHandler
-	menu        MenuModel
-	help        HelpModel
-	statusBar   *StatusBar
+	store     *state.ThreadStore
+	client    *appserver.Client
+	canvas    CanvasModel
+	tree      TreeModel
+	session   *SessionModel
+	prefix    *PrefixHandler
+	menu      MenuModel
+	help      HelpModel
+	statusBar *StatusBar
+
 	menuVisible bool
 	helpVisible bool
 	focus       int
@@ -51,10 +54,6 @@ func NewAppModel(store *state.ThreadStore, client *appserver.Client) AppModel {
 	}
 }
 
-func (app *AppModel) SetProgram(program *tea.Program) {
-	app.program = program
-}
-
 func (app AppModel) Focus() int {
 	return app.focus
 }
@@ -69,21 +68,16 @@ func (app AppModel) Init() tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		ctx := context.Background()
-		if err := app.client.Start(ctx); err != nil {
+		if err := app.client.Start(context.Background()); err != nil {
 			return AppServerErrorMsg{Err: err}
-		}
-
-		router := appserver.NewNotificationRouter()
-		app.client.Router = router
-
-		if app.program != nil {
-			WireEventBridge(router, app.program)
 		}
 
 		go app.client.ReadLoop(app.client.Dispatch)
 
-		caps, err := app.client.Initialize(ctx)
+		initCtx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+		defer cancel()
+
+		caps, err := app.client.Initialize(initCtx)
 		if err != nil {
 			return AppServerErrorMsg{Err: err}
 		}
@@ -179,7 +173,8 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (app AppModel) createThreadCmd() tea.Cmd {
 	return func() tea.Msg {
-		if app.client == nil {
+		isDisconnected := app.client == nil || !app.client.Running()
+		if isDisconnected {
 			return AppServerErrorMsg{Err: fmt.Errorf("not connected to app-server")}
 		}
 
