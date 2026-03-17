@@ -287,3 +287,15 @@ func TestAppSessionRefreshesOnMessage(t *testing.T) {
 		t.Errorf("expected session focus maintained, got %d", app.Focus())
 	}
 }
+
+func TestAppNewThread(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store, nil)
+
+	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	_, cmd := app.Update(nKey)
+
+	if cmd == nil {
+		t.Error("expected command for thread creation")
+	}
+}

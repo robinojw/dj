@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -115,6 +116,10 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app.handleThreadDelta(msg)
 	case CommandOutputMsg:
 		return app.handleCommandOutput(msg)
+	case ThreadCreatedMsg:
+		app.store.Add(msg.ThreadID, msg.Title)
+		app.statusBar.SetThreadCount(len(app.store.All()))
+		return app, nil
 	case AppServerConnectedMsg:
 		app.statusBar.SetConnected(true)
 		return app, nil
@@ -166,8 +171,29 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		app.toggleFocus()
 	case "?":
 		app.helpVisible = !app.helpVisible
+	case "n":
+		return app, app.createThreadCmd()
 	}
 	return app, nil
+}
+
+func (app AppModel) createThreadCmd() tea.Cmd {
+	return func() tea.Msg {
+		if app.client == nil {
+			return AppServerErrorMsg{Err: fmt.Errorf("not connected to app-server")}
+		}
+
+		ctx := context.Background()
+		result, err := app.client.CreateThread(ctx, "New thread")
+		if err != nil {
+			return AppServerErrorMsg{Err: err}
+		}
+
+		return ThreadCreatedMsg{
+			ThreadID: result.ThreadID,
+			Title:    "New thread",
+		}
+	}
 }
 
 func (app AppModel) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
