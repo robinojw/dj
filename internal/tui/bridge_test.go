@@ -3,14 +3,15 @@ package tui
 import (
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/internal/appserver"
 )
 
 type mockSender struct {
-	messages []any
+	messages []tea.Msg
 }
 
-func (mock *mockSender) Send(msg any) {
+func (mock *mockSender) Send(msg tea.Msg) {
 	mock.messages = append(mock.messages, msg)
 }
 

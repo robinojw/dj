@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"context"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/robinojw/dj/internal/appserver"
 	"github.com/robinojw/dj/internal/state"
 )
 
@@ -19,12 +22,15 @@ var titleStyle = lipgloss.NewStyle().
 
 type AppModel struct {
 	store       *state.ThreadStore
+	client      *appserver.Client
+	program     *tea.Program
 	canvas      CanvasModel
 	tree        TreeModel
 	session     *SessionModel
 	prefix      *PrefixHandler
 	menu        MenuModel
 	help        HelpModel
+	statusBar   *StatusBar
 	menuVisible bool
 	helpVisible bool
 	focus       int
@@ -32,14 +38,20 @@ type AppModel struct {
 	height      int
 }
 
-func NewAppModel(store *state.ThreadStore) AppModel {
+func NewAppModel(store *state.ThreadStore, client *appserver.Client) AppModel {
 	return AppModel{
-		store:  store,
-		canvas: NewCanvasModel(store),
-		tree:   NewTreeModel(store),
-		prefix: NewPrefixHandler(),
-		help:   NewHelpModel(),
+		store:     store,
+		client:    client,
+		canvas:    NewCanvasModel(store),
+		tree:      NewTreeModel(store),
+		prefix:    NewPrefixHandler(),
+		help:      NewHelpModel(),
+		statusBar: NewStatusBar(),
 	}
+}
+
+func (app *AppModel) SetProgram(program *tea.Program) {
+	app.program = program
 }
 
 func (app AppModel) Focus() int {
@@ -51,7 +63,35 @@ func (app AppModel) HelpVisible() bool {
 }
 
 func (app AppModel) Init() tea.Cmd {
-	return nil
+	if app.client == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		ctx := context.Background()
+		if err := app.client.Start(ctx); err != nil {
+			return AppServerErrorMsg{Err: err}
+		}
+
+		router := appserver.NewNotificationRouter()
+		app.client.Router = router
+
+		if app.program != nil {
+			WireEventBridge(router, app.program)
+		}
+
+		go app.client.ReadLoop(app.client.Dispatch)
+
+		caps, err := app.client.Initialize(ctx)
+		if err != nil {
+			return AppServerErrorMsg{Err: err}
+		}
+
+		return AppServerConnectedMsg{
+			ServerName:    caps.ServerInfo.Name,
+			ServerVersion: caps.ServerInfo.Version,
+		}
+	}
 }
 
 func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -61,6 +101,7 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		app.width = msg.Width
 		app.height = msg.Height
+		app.statusBar.SetWidth(msg.Width)
 		if app.session != nil {
 			app.session.SetSize(msg.Width, msg.Height)
 		}
@@ -74,6 +115,12 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app.handleThreadDelta(msg)
 	case CommandOutputMsg:
 		return app.handleCommandOutput(msg)
+	case AppServerConnectedMsg:
+		app.statusBar.SetConnected(true)
+		return app, nil
+	case AppServerErrorMsg:
+		app.statusBar.SetError(msg.Error())
+		return app, nil
 	}
 	return app, nil
 }
@@ -171,114 +218,20 @@ func (app *AppModel) handleCanvasArrow(msg tea.KeyMsg) {
 	}
 }
 
-func (app AppModel) handleSessionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyCtrlC:
-		return app, tea.Quit
-	case tea.KeyEsc:
-		app.closeSession()
-		return app, nil
-	case tea.KeyUp, tea.KeyDown, tea.KeyPgUp, tea.KeyPgDown:
-		app.scrollSession(msg)
-		return app, nil
-	}
-	return app, nil
-}
-
-func (app AppModel) openSession() (tea.Model, tea.Cmd) {
-	threadID := app.canvas.SelectedThreadID()
-	if threadID == "" {
-		return app, nil
-	}
-
-	thread, exists := app.store.Get(threadID)
-	if !exists {
-		return app, nil
-	}
-
-	session := NewSessionModel(thread)
-	session.SetSize(app.width, app.height)
-	app.session = &session
-	app.focus = FocusSession
-	return app, nil
-}
-
-func (app *AppModel) closeSession() {
-	app.session = nil
-	app.focus = FocusCanvas
-}
-
-func (app *AppModel) scrollSession(msg tea.KeyMsg) {
-	if app.session == nil {
-		return
-	}
-
-	switch msg.Type {
-	case tea.KeyUp:
-		app.session.viewport.ScrollUp(1)
-	case tea.KeyDown:
-		app.session.viewport.ScrollDown(1)
-	case tea.KeyPgUp:
-		app.session.viewport.HalfPageUp()
-	case tea.KeyPgDown:
-		app.session.viewport.HalfPageDown()
-	}
-}
-
-func (app *AppModel) refreshSession() {
-	if app.session == nil {
-		return
-	}
-	app.session.Refresh()
-}
-
-func (app AppModel) handleThreadMessage(msg ThreadMessageMsg) (tea.Model, tea.Cmd) {
-	thread, exists := app.store.Get(msg.ThreadID)
-	if !exists {
-		return app, nil
-	}
-	thread.AppendMessage(state.ChatMessage{
-		ID:      msg.MessageID,
-		Role:    msg.Role,
-		Content: msg.Content,
-	})
-	app.refreshSession()
-	return app, nil
-}
-
-func (app AppModel) handleThreadDelta(msg ThreadDeltaMsg) (tea.Model, tea.Cmd) {
-	thread, exists := app.store.Get(msg.ThreadID)
-	if !exists {
-		return app, nil
-	}
-	thread.AppendDelta(msg.MessageID, msg.Delta)
-	app.refreshSession()
-	return app, nil
-}
-
-func (app AppModel) handleCommandOutput(msg CommandOutputMsg) (tea.Model, tea.Cmd) {
-	thread, exists := app.store.Get(msg.ThreadID)
-	if !exists {
-		return app, nil
-	}
-	thread.AppendOutput(msg.ExecID, msg.Data)
-	app.refreshSession()
-	return app, nil
-}
-
 func (app AppModel) View() string {
 	title := titleStyle.Render("DJ — Codex TUI Visualizer")
+	status := app.statusBar.View()
 
 	if app.helpVisible {
-		return title + "\n" + app.help.View() + "\n"
+		return title + "\n" + app.help.View() + "\n" + status
 	}
 
 	if app.menuVisible {
-		return title + "\n" + app.menu.View() + "\n"
+		return title + "\n" + app.menu.View() + "\n" + status
 	}
 
 	if app.focus == FocusSession && app.session != nil {
-		return title + "\n" + app.session.View() + "\n"
+		return title + "\n" + app.session.View() + "\n" + status
 	}
 
 	canvas := app.canvas.View()
@@ -286,8 +239,8 @@ func (app AppModel) View() string {
 	if app.focus == FocusTree {
 		treeView := app.tree.View()
 		body := lipgloss.JoinHorizontal(lipgloss.Top, treeView+"  ", canvas)
-		return title + "\n" + body + "\n"
+		return title + "\n" + body + "\n" + status
 	}
 
-	return title + "\n" + canvas + "\n"
+	return title + "\n" + canvas + "\n" + status
 }

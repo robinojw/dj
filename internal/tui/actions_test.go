@@ -28,7 +28,7 @@ func TestMenuEnterDispatchesFork(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
 	updated, _ := app.Update(ctrlB)
@@ -64,7 +64,7 @@ func TestMenuEnterDispatchesDelete(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
 	updated, _ := app.Update(ctrlB)

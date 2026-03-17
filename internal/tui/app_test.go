@@ -12,7 +12,7 @@ func TestAppHandlesArrowKeys(t *testing.T) {
 	store.Add("t-1", "First")
 	store.Add("t-2", "Second")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	rightKey := tea.KeyMsg{Type: tea.KeyRight}
 	updated, _ := app.Update(rightKey)
@@ -27,7 +27,7 @@ func TestAppHandlesThreadStatusMsg(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Initial")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	msg := ThreadStatusMsg{
 		ThreadID: "t-1",
@@ -49,7 +49,7 @@ func TestAppToggleFocus(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	if app.Focus() != FocusCanvas {
 		t.Errorf("expected canvas focus, got %d", app.Focus())
@@ -69,7 +69,7 @@ func TestAppTreeNavigationWhenFocused(t *testing.T) {
 	store.Add("t-1", "First")
 	store.Add("t-2", "Second")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	toggleKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}
 	updated, _ := app.Update(toggleKey)
@@ -86,7 +86,7 @@ func TestAppTreeNavigationWhenFocused(t *testing.T) {
 
 func TestAppHandlesQuit(t *testing.T) {
 	store := state.NewThreadStore()
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	quitKey := tea.KeyMsg{Type: tea.KeyCtrlC}
 	_, cmd := app.Update(quitKey)
@@ -100,7 +100,7 @@ func TestAppEnterOpensSession(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test Task")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
 	updated, _ := app.Update(enterKey)
@@ -115,7 +115,7 @@ func TestAppEscClosesSession(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test Task")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
 	updated, _ := app.Update(enterKey)
@@ -132,7 +132,7 @@ func TestAppEscClosesSession(t *testing.T) {
 
 func TestAppEnterWithNoThreadsDoesNothing(t *testing.T) {
 	store := state.NewThreadStore()
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
 	updated, _ := app.Update(enterKey)
@@ -147,7 +147,7 @@ func TestAppCtrlBMOpensMenu(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
 	updated, _ := app.Update(ctrlB)
@@ -166,7 +166,7 @@ func TestAppMenuEscCloses(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
 	updated, _ := app.Update(ctrlB)
@@ -189,7 +189,7 @@ func TestAppCtrlBEscCancelsPrefix(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
 	updated, _ := app.Update(ctrlB)
@@ -208,7 +208,7 @@ func TestAppMenuNavigation(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
 	updated, _ := app.Update(ctrlB)
@@ -229,7 +229,7 @@ func TestAppMenuNavigation(t *testing.T) {
 
 func TestAppHelpToggle(t *testing.T) {
 	store := state.NewThreadStore()
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	helpKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}
 	updated, _ := app.Update(helpKey)
@@ -249,7 +249,7 @@ func TestAppHelpToggle(t *testing.T) {
 
 func TestAppHelpEscCloses(t *testing.T) {
 	store := state.NewThreadStore()
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	helpKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}
 	updated, _ := app.Update(helpKey)
@@ -268,7 +268,7 @@ func TestAppSessionRefreshesOnMessage(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")
 
-	app := NewAppModel(store)
+	app := NewAppModel(store, nil)
 
 	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
 	updated, _ := app.Update(enterKey)

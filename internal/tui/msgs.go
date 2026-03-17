@@ -40,6 +40,11 @@ type ThreadDeletedMsg struct {
 	ThreadID string
 }
 
+type AppServerConnectedMsg struct {
+	ServerName    string
+	ServerVersion string
+}
+
 type AppServerErrorMsg struct {
 	Err error
 }
