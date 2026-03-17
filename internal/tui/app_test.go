@@ -143,6 +143,90 @@ func TestAppEnterWithNoThreadsDoesNothing(t *testing.T) {
 	}
 }
 
+func TestAppCtrlBMOpensMenu(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "Test")
+
+	app := NewAppModel(store)
+
+	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
+	updated, _ := app.Update(ctrlB)
+	app = updated.(AppModel)
+
+	mKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}}
+	updated, _ = app.Update(mKey)
+	app = updated.(AppModel)
+
+	if !app.MenuVisible() {
+		t.Error("expected menu to be visible")
+	}
+}
+
+func TestAppMenuEscCloses(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "Test")
+
+	app := NewAppModel(store)
+
+	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
+	updated, _ := app.Update(ctrlB)
+	app = updated.(AppModel)
+
+	mKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}}
+	updated, _ = app.Update(mKey)
+	app = updated.(AppModel)
+
+	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	updated, _ = app.Update(escKey)
+	app = updated.(AppModel)
+
+	if app.MenuVisible() {
+		t.Error("expected menu hidden after Esc")
+	}
+}
+
+func TestAppCtrlBEscCancelsPrefix(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "Test")
+
+	app := NewAppModel(store)
+
+	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
+	updated, _ := app.Update(ctrlB)
+	app = updated.(AppModel)
+
+	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	updated, _ = app.Update(escKey)
+	app = updated.(AppModel)
+
+	if app.MenuVisible() {
+		t.Error("expected menu not visible after prefix cancel")
+	}
+}
+
+func TestAppMenuNavigation(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "Test")
+
+	app := NewAppModel(store)
+
+	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
+	updated, _ := app.Update(ctrlB)
+	app = updated.(AppModel)
+
+	mKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}}
+	updated, _ = app.Update(mKey)
+	app = updated.(AppModel)
+
+	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	updated, _ = app.Update(downKey)
+	app = updated.(AppModel)
+
+	if app.menu.SelectedIndex() != 1 {
+		t.Errorf("expected menu index 1, got %d", app.menu.SelectedIndex())
+	}
+}
+
 func TestAppSessionRefreshesOnMessage(t *testing.T) {
 	store := state.NewThreadStore()
 	store.Add("t-1", "Test")

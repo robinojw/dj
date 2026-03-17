@@ -18,13 +18,16 @@ var titleStyle = lipgloss.NewStyle().
 	MarginBottom(1)
 
 type AppModel struct {
-	store   *state.ThreadStore
-	canvas  CanvasModel
-	tree    TreeModel
-	session *SessionModel
-	focus   int
-	width   int
-	height  int
+	store       *state.ThreadStore
+	canvas      CanvasModel
+	tree        TreeModel
+	session     *SessionModel
+	prefix      *PrefixHandler
+	menu        MenuModel
+	menuVisible bool
+	focus       int
+	width       int
+	height      int
 }
 
 func NewAppModel(store *state.ThreadStore) AppModel {
@@ -32,6 +35,7 @@ func NewAppModel(store *state.ThreadStore) AppModel {
 		store:  store,
 		canvas: NewCanvasModel(store),
 		tree:   NewTreeModel(store),
+		prefix: NewPrefixHandler(),
 	}
 }
 
@@ -68,6 +72,20 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if app.menuVisible {
+		return app.handleMenuKey(msg)
+	}
+
+	prefixResult := app.prefix.HandleKey(msg)
+	switch prefixResult {
+	case PrefixWaiting:
+		return app, nil
+	case PrefixComplete:
+		return app.handlePrefixAction()
+	case PrefixCancelled:
+		return app, nil
+	}
+
 	if app.focus == FocusSession {
 		return app.handleSessionKey(msg)
 	}
@@ -227,6 +245,10 @@ func (app AppModel) handleCommandOutput(msg CommandOutputMsg) (tea.Model, tea.Cm
 
 func (app AppModel) View() string {
 	title := titleStyle.Render("DJ — Codex TUI Visualizer")
+
+	if app.menuVisible {
+		return title + "\n" + app.menu.View() + "\n"
+	}
 
 	if app.focus == FocusSession && app.session != nil {
 		return title + "\n" + app.session.View() + "\n"
