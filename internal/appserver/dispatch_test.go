@@ -6,46 +6,52 @@ import (
 	"testing"
 )
 
-func TestDispatchRoutesNotificationToRouter(t *testing.T) {
-	client := &Client{}
-	router := NewNotificationRouter()
+func TestEventRouterDispatchesSessionConfigured(t *testing.T) {
+	router := NewEventRouter()
 
 	var called atomic.Bool
-	router.OnThreadStatusChanged(func(params ThreadStatusChanged) {
+	router.OnSessionConfigured(func(event SessionConfigured) {
 		called.Store(true)
-		if params.ThreadID != "t-1" {
-			t.Errorf("expected t-1, got %s", params.ThreadID)
+		if event.SessionID != "sess-1" {
+			t.Errorf("expected sess-1, got %s", event.SessionID)
 		}
 	})
 
-	client.Router = router
-
-	msg := Message{
-		Method: NotifyThreadStatusChanged,
-		Params: json.RawMessage(`{"threadId":"t-1","status":"active","title":"Test"}`),
+	event := Event{
+		ID:  "",
+		Msg: json.RawMessage(`{"type":"session_configured","session_id":"sess-1","model":"gpt-4o"}`),
 	}
-	client.Dispatch(msg)
+	router.HandleEvent(event)
 
 	if !called.Load() {
-		t.Error("router handler was not called")
+		t.Error("handler was not called")
 	}
 }
 
-func TestDispatchFallsBackToOnNotification(t *testing.T) {
-	client := &Client{}
-
-	var called atomic.Bool
-	client.OnNotification = func(method string, params json.RawMessage) {
-		called.Store(true)
+func TestEventRouterIgnoresUnregisteredType(t *testing.T) {
+	router := NewEventRouter()
+	event := Event{
+		ID:  "",
+		Msg: json.RawMessage(`{"type":"unknown_event"}`),
 	}
+	router.HandleEvent(event)
+}
 
-	msg := Message{
-		Method: "custom/notification",
-		Params: json.RawMessage(`{}`),
+func TestEventRouterDispatchesError(t *testing.T) {
+	router := NewEventRouter()
+
+	var receivedMsg string
+	router.OnError(func(event ServerError) {
+		receivedMsg = event.Message
+	})
+
+	event := Event{
+		ID:  "",
+		Msg: json.RawMessage(`{"type":"error","message":"test error"}`),
 	}
-	client.Dispatch(msg)
+	router.HandleEvent(event)
 
-	if !called.Load() {
-		t.Error("OnNotification was not called")
+	if receivedMsg != "test error" {
+		t.Errorf("expected 'test error', got %s", receivedMsg)
 	}
 }

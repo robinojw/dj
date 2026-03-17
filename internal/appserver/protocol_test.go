@@ -5,66 +5,65 @@ import (
 	"testing"
 )
 
-func TestRequestMarshal(t *testing.T) {
-	req := &Request{
-		ID:     intPtr(1),
-		Method: "thread/list",
-		Params: json.RawMessage(`{}`),
+func TestSubmissionMarshal(t *testing.T) {
+	op := UserTurnOp{
+		Type:           OpUserTurn,
+		Items:          []UserInput{NewTextInput("hello")},
+		Cwd:            "/tmp",
+		ApprovalPolicy: "never",
+		SandboxPolicy:  SandboxPolicyReadOnly(),
+		Model:          "o4-mini",
 	}
-	data, err := json.Marshal(req)
+	opData, _ := json.Marshal(op)
+
+	sub := &Submission{
+		ID: "sub-1",
+		Op: opData,
+	}
+	data, err := json.Marshal(sub)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var parsed map[string]any
 	json.Unmarshal(data, &parsed)
-	if _, hasJSONRPC := parsed["jsonrpc"]; hasJSONRPC {
-		t.Error("codex wire format must not include jsonrpc field")
-	}
-	if parsed["method"] != "thread/list" {
-		t.Errorf("expected method thread/list, got %v", parsed["method"])
+	if parsed["id"] != "sub-1" {
+		t.Errorf("expected id sub-1, got %v", parsed["id"])
 	}
 }
 
-func TestResponseUnmarshal(t *testing.T) {
-	raw := `{"id":1,"result":{"threads":[]}}`
-	var resp Response
-	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
+func TestEventUnmarshal(t *testing.T) {
+	raw := `{"id":"","msg":{"type":"session_configured","session_id":"sess-1","model":"gpt-4o"}}`
+	var event Event
+	if err := json.Unmarshal([]byte(raw), &event); err != nil {
 		t.Fatal(err)
 	}
-	if resp.ID == nil || *resp.ID != 1 {
-		t.Errorf("expected id 1, got %v", resp.ID)
+	if event.ID != "" {
+		t.Errorf("expected empty id, got %s", event.ID)
 	}
-	if resp.Error != nil {
-		t.Error("expected no error")
-	}
-}
 
-func TestNotificationUnmarshal(t *testing.T) {
-	raw := `{"method":"thread/status/changed","params":{"threadId":"t1","status":"active"}}`
-	var msg Message
-	if err := json.Unmarshal([]byte(raw), &msg); err != nil {
+	var header EventHeader
+	if err := json.Unmarshal(event.Msg, &header); err != nil {
 		t.Fatal(err)
 	}
-	if msg.Method != "thread/status/changed" {
-		t.Errorf("expected thread/status/changed, got %s", msg.Method)
-	}
-	if msg.ID != nil {
-		t.Error("notification should have no id")
+	if header.Type != EventSessionConfigured {
+		t.Errorf("expected session_configured, got %s", header.Type)
 	}
 }
 
-func TestErrorResponseUnmarshal(t *testing.T) {
-	raw := `{"id":2,"error":{"code":-32600,"message":"Invalid Request"}}`
-	var resp Response
-	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
+func TestEventHeaderExtraction(t *testing.T) {
+	raw := `{"type":"agent_message_delta","delta":"hello"}`
+	var header EventHeader
+	if err := json.Unmarshal([]byte(raw), &header); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Error == nil {
-		t.Fatal("expected error")
-	}
-	if resp.Error.Code != -32600 {
-		t.Errorf("expected code -32600, got %d", resp.Error.Code)
+	if header.Type != EventAgentMessageDelta {
+		t.Errorf("expected agent_message_delta, got %s", header.Type)
 	}
 }
 
-func intPtr(i int) *int { return &i }
+func TestRPCErrorMessage(t *testing.T) {
+	err := &RPCError{Code: -1, Message: "something broke"}
+	if err.Error() != "something broke" {
+		t.Errorf("expected 'something broke', got %s", err.Error())
+	}
+}

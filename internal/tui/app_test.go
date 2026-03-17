@@ -300,18 +300,35 @@ func TestAppNewThreadBlockedWhenDisconnected(t *testing.T) {
 	}
 }
 
-func TestAppNewThreadAllowedWhenConnected(t *testing.T) {
+func TestAppConnectedAutoCreatesThread(t *testing.T) {
 	store := state.NewThreadStore()
 	app := NewAppModel(store, nil)
 
-	connectedMsg := AppServerConnectedMsg{ServerName: "test", ServerVersion: "1.0"}
+	connectedMsg := AppServerConnectedMsg{SessionID: "sess-1", Model: "gpt-4o"}
+	updated, _ := app.Update(connectedMsg)
+	app = updated.(AppModel)
+
+	threads := store.All()
+	if len(threads) != 1 {
+		t.Fatalf("expected 1 thread after connect, got %d", len(threads))
+	}
+	if threads[0].Title != "gpt-4o" {
+		t.Errorf("expected thread title gpt-4o, got %s", threads[0].Title)
+	}
+}
+
+func TestAppNKeyShowsMessageWhenConnected(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store, nil)
+
+	connectedMsg := AppServerConnectedMsg{SessionID: "sess-1", Model: "gpt-4o"}
 	updated, _ := app.Update(connectedMsg)
 	app = updated.(AppModel)
 
 	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
 	_, cmd := app.Update(nKey)
 
-	if cmd == nil {
-		t.Error("expected command for thread creation when connected")
+	if cmd != nil {
+		t.Error("expected no command in single session mode")
 	}
 }

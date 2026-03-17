@@ -2,25 +2,42 @@ package appserver
 
 import "testing"
 
-func TestMethodConstants(t *testing.T) {
+func TestOpConstants(t *testing.T) {
 	tests := []struct {
 		name     string
 		constant string
 		expected string
 	}{
-		{"ThreadStart", MethodThreadStart, "thread/start"},
-		{"ThreadList", MethodThreadList, "thread/list"},
-		{"ThreadArchive", MethodThreadArchive, "thread/archive"},
-		{"TurnStart", MethodTurnStart, "turn/start"},
-		{"TurnInterrupt", MethodTurnInterrupt, "turn/interrupt"},
-		{"NotifyThreadStatus", NotifyThreadStatusChanged, "thread/status/changed"},
-		{"NotifyItemStarted", NotifyItemStarted, "item/started"},
-		{"NotifyItemCompleted", NotifyItemCompleted, "item/completed"},
-		{"NotifyItemMessageDelta", NotifyItemMessageDelta, "item/agentMessage/delta"},
-		{"NotifyTurnStarted", NotifyTurnStarted, "turn/started"},
-		{"NotifyTurnCompleted", NotifyTurnCompleted, "turn/completed"},
-		{"NotifyCommandOutput", NotifyCommandOutput, "command/output"},
-		{"NotifyCommandFinished", NotifyCommandFinished, "command/finished"},
+		{"UserTurn", OpUserTurn, "user_turn"},
+		{"Interrupt", OpInterrupt, "interrupt"},
+		{"ExecApproval", OpExecApproval, "exec_approval"},
+		{"Shutdown", OpShutdown, "shutdown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.constant != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, tt.constant)
+			}
+		})
+	}
+}
+
+func TestEventConstants(t *testing.T) {
+	tests := []struct {
+		name     string
+		constant string
+		expected string
+	}{
+		{"SessionConfigured", EventSessionConfigured, "session_configured"},
+		{"TaskStarted", EventTaskStarted, "task_started"},
+		{"TaskComplete", EventTaskComplete, "task_complete"},
+		{"AgentMessage", EventAgentMessage, "agent_message"},
+		{"AgentMessageDelta", EventAgentMessageDelta, "agent_message_delta"},
+		{"ExecCommandBegin", EventExecCommandBegin, "exec_command_begin"},
+		{"ExecCommandOutputDelta", EventExecCommandOutputDelta, "exec_command_output_delta"},
+		{"ExecCommandEnd", EventExecCommandEnd, "exec_command_end"},
+		{"ExecApprovalRequest", EventExecApprovalRequest, "exec_approval_request"},
+		{"Error", EventError, "error"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

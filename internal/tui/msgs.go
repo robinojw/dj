@@ -41,8 +41,8 @@ type ThreadDeletedMsg struct {
 }
 
 type AppServerConnectedMsg struct {
-	ServerName    string
-	ServerVersion string
+	SessionID string
+	Model     string
 }
 
 type AppServerErrorMsg struct {

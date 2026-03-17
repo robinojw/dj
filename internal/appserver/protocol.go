@@ -2,33 +2,24 @@ package appserver
 
 import "encoding/json"
 
-// Message is the generic JSON-RPC envelope used by the Codex App Server.
-// The Codex wire format omits the "jsonrpc" field.
-// Covers requests (id + method), responses (id + result/error),
-// and notifications (method, no id).
-type Message struct {
-	ID     *int            `json:"id,omitempty"`
-	Method string          `json:"method,omitempty"`
-	Params json.RawMessage `json:"params,omitempty"`
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  *RPCError       `json:"error,omitempty"`
+// Submission is a client-to-server message in the Codex proto protocol.
+type Submission struct {
+	ID string          `json:"id"`
+	Op json.RawMessage `json:"op"`
 }
 
-// Request is an outbound JSON-RPC request.
-type Request struct {
-	ID     *int            `json:"id,omitempty"`
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params,omitempty"`
+// Event is a server-to-client message in the Codex proto protocol.
+type Event struct {
+	ID  string          `json:"id"`
+	Msg json.RawMessage `json:"msg"`
 }
 
-// Response is an inbound JSON-RPC response.
-type Response struct {
-	ID     *int            `json:"id,omitempty"`
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  *RPCError       `json:"error,omitempty"`
+// EventHeader extracts just the type discriminator from an event message.
+type EventHeader struct {
+	Type string `json:"type"`
 }
 
-// RPCError is the JSON-RPC error object.
+// RPCError is an error returned by the server.
 type RPCError struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`

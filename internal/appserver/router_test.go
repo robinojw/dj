@@ -6,90 +6,97 @@ import (
 	"testing"
 )
 
-func TestRouterDispatchesNotification(t *testing.T) {
-	router := NewNotificationRouter()
-
-	var called atomic.Bool
-	router.OnThreadStatusChanged(func(params ThreadStatusChanged) {
-		called.Store(true)
-		if params.ThreadID != "t-1" {
-			t.Errorf("expected t-1, got %s", params.ThreadID)
-		}
-	})
-
-	raw := json.RawMessage(`{"threadId":"t-1","status":"active","title":"Test"}`)
-	router.Handle(NotifyThreadStatusChanged, raw)
-
-	if !called.Load() {
-		t.Error("handler was not called")
-	}
-}
-
-func TestRouterIgnoresUnregisteredMethod(t *testing.T) {
-	router := NewNotificationRouter()
-	router.Handle("unknown/method", json.RawMessage(`{}`))
-}
-
-func TestRouterDispatchesItemMessageDelta(t *testing.T) {
-	router := NewNotificationRouter()
+func TestRouterDispatchesAgentMessageDelta(t *testing.T) {
+	router := NewEventRouter()
 
 	var receivedDelta string
-	router.OnItemMessageDelta(func(params ItemMessageDelta) {
-		receivedDelta = params.Delta
+	router.OnAgentMessageDelta(func(event AgentMessageDelta) {
+		receivedDelta = event.Delta
 	})
 
-	raw := json.RawMessage(`{"threadId":"t-1","itemId":"item-1","delta":"hello"}`)
-	router.Handle(NotifyItemMessageDelta, raw)
+	event := Event{
+		ID:  "sub-1",
+		Msg: json.RawMessage(`{"type":"agent_message_delta","delta":"hello"}`),
+	}
+	router.HandleEvent(event)
 
 	if receivedDelta != "hello" {
 		t.Errorf("expected hello, got %s", receivedDelta)
 	}
 }
 
-func TestRouterDispatchesCommandOutput(t *testing.T) {
-	router := NewNotificationRouter()
+func TestRouterDispatchesExecCommandBegin(t *testing.T) {
+	router := NewEventRouter()
 
-	var receivedData string
-	router.OnCommandOutput(func(params CommandOutput) {
-		receivedData = params.Data
+	var receivedCommand string
+	router.OnExecCommandBegin(func(event ExecCommandBegin) {
+		receivedCommand = event.Command
 	})
 
-	raw := json.RawMessage(`{"threadId":"t-1","execId":"e-1","data":"output line\n"}`)
-	router.Handle(NotifyCommandOutput, raw)
+	event := Event{
+		ID:  "sub-1",
+		Msg: json.RawMessage(`{"type":"exec_command_begin","call_id":"cmd-1","command":"ls"}`),
+	}
+	router.HandleEvent(event)
 
-	if receivedData != "output line\n" {
+	if receivedCommand != "ls" {
+		t.Errorf("expected ls, got %s", receivedCommand)
+	}
+}
+
+func TestRouterDispatchesExecCommandOutputDelta(t *testing.T) {
+	router := NewEventRouter()
+
+	var receivedData string
+	router.OnExecCommandOutputDelta(func(event ExecCommandOutputDelta) {
+		receivedData = event.Delta
+	})
+
+	event := Event{
+		ID:  "sub-1",
+		Msg: json.RawMessage(`{"type":"exec_command_output_delta","call_id":"cmd-1","delta":"output\n"}`),
+	}
+	router.HandleEvent(event)
+
+	if receivedData != "output\n" {
 		t.Errorf("expected output, got %s", receivedData)
 	}
 }
 
-func TestRouterDispatchesItemStarted(t *testing.T) {
-	router := NewNotificationRouter()
+func TestRouterDispatchesExecApprovalRequest(t *testing.T) {
+	router := NewEventRouter()
 
-	var receivedRole string
-	router.OnItemStarted(func(params ItemStarted) {
-		receivedRole = params.Role
+	var called atomic.Bool
+	router.OnExecApprovalRequest(func(event ExecApprovalRequest) {
+		called.Store(true)
 	})
 
-	raw := json.RawMessage(`{"threadId":"t-1","itemId":"item-1","role":"assistant","type":"message"}`)
-	router.Handle(NotifyItemStarted, raw)
+	event := Event{
+		ID:  "",
+		Msg: json.RawMessage(`{"type":"exec_approval_request","call_id":"cmd-1","command":"rm file"}`),
+	}
+	router.HandleEvent(event)
 
-	if receivedRole != "assistant" {
-		t.Errorf("expected assistant, got %s", receivedRole)
+	if !called.Load() {
+		t.Error("handler was not called")
 	}
 }
 
-func TestRouterDispatchesTurnCompleted(t *testing.T) {
-	router := NewNotificationRouter()
+func TestRouterDispatchesTaskComplete(t *testing.T) {
+	router := NewEventRouter()
 
-	var receivedTurnID string
-	router.OnTurnCompleted(func(params TurnCompleted) {
-		receivedTurnID = params.TurnID
+	var called atomic.Bool
+	router.OnTaskComplete(func(event TaskComplete) {
+		called.Store(true)
 	})
 
-	raw := json.RawMessage(`{"threadId":"t-1","turnId":"turn-1"}`)
-	router.Handle(NotifyTurnCompleted, raw)
+	event := Event{
+		ID:  "sub-1",
+		Msg: json.RawMessage(`{"type":"task_complete"}`),
+	}
+	router.HandleEvent(event)
 
-	if receivedTurnID != "turn-1" {
-		t.Errorf("expected turn-1, got %s", receivedTurnID)
+	if !called.Load() {
+		t.Error("handler was not called")
 	}
 }

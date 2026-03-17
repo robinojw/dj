@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,56 +16,42 @@ func (mock *mockSender) Send(msg tea.Msg) {
 	mock.messages = append(mock.messages, msg)
 }
 
-func TestBridgeThreadStatusChanged(t *testing.T) {
+func TestBridgeSessionConfigured(t *testing.T) {
 	sender := &mockSender{}
-	router := appserver.NewNotificationRouter()
+	router := appserver.NewEventRouter()
 	WireEventBridge(router, sender)
 
-	router.Handle(appserver.NotifyThreadStatusChanged,
-		[]byte(`{"threadId":"t-1","status":"active","title":"Running"}`))
+	event := appserver.Event{
+		ID:  "",
+		Msg: json.RawMessage(`{"type":"session_configured","session_id":"sess-1","model":"gpt-4o"}`),
+	}
+	router.HandleEvent(event)
 
 	if len(sender.messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(sender.messages))
 	}
-	msg, ok := sender.messages[0].(ThreadStatusMsg)
+	msg, ok := sender.messages[0].(AppServerConnectedMsg)
 	if !ok {
-		t.Fatalf("expected ThreadStatusMsg, got %T", sender.messages[0])
+		t.Fatalf("expected AppServerConnectedMsg, got %T", sender.messages[0])
 	}
-	if msg.ThreadID != "t-1" {
-		t.Errorf("expected t-1, got %s", msg.ThreadID)
+	if msg.SessionID != "sess-1" {
+		t.Errorf("expected sess-1, got %s", msg.SessionID)
+	}
+	if msg.Model != "gpt-4o" {
+		t.Errorf("expected gpt-4o, got %s", msg.Model)
 	}
 }
 
-func TestBridgeItemStarted(t *testing.T) {
+func TestBridgeAgentMessageDelta(t *testing.T) {
 	sender := &mockSender{}
-	router := appserver.NewNotificationRouter()
+	router := appserver.NewEventRouter()
 	WireEventBridge(router, sender)
 
-	router.Handle(appserver.NotifyItemStarted,
-		[]byte(`{"threadId":"t-1","itemId":"item-1","role":"assistant","type":"message"}`))
-
-	if len(sender.messages) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(sender.messages))
+	event := appserver.Event{
+		ID:  "sub-1",
+		Msg: json.RawMessage(`{"type":"agent_message_delta","delta":"hello"}`),
 	}
-	msg, ok := sender.messages[0].(ThreadMessageMsg)
-	if !ok {
-		t.Fatalf("expected ThreadMessageMsg, got %T", sender.messages[0])
-	}
-	if msg.Role != "assistant" {
-		t.Errorf("expected assistant, got %s", msg.Role)
-	}
-	if msg.MessageID != "item-1" {
-		t.Errorf("expected item-1, got %s", msg.MessageID)
-	}
-}
-
-func TestBridgeItemMessageDelta(t *testing.T) {
-	sender := &mockSender{}
-	router := appserver.NewNotificationRouter()
-	WireEventBridge(router, sender)
-
-	router.Handle(appserver.NotifyItemMessageDelta,
-		[]byte(`{"threadId":"t-1","itemId":"item-1","delta":"hello"}`))
+	router.HandleEvent(event)
 
 	if len(sender.messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(sender.messages))
@@ -78,13 +65,16 @@ func TestBridgeItemMessageDelta(t *testing.T) {
 	}
 }
 
-func TestBridgeCommandOutput(t *testing.T) {
+func TestBridgeExecCommandBegin(t *testing.T) {
 	sender := &mockSender{}
-	router := appserver.NewNotificationRouter()
+	router := appserver.NewEventRouter()
 	WireEventBridge(router, sender)
 
-	router.Handle(appserver.NotifyCommandOutput,
-		[]byte(`{"threadId":"t-1","execId":"e-1","data":"hello\n"}`))
+	event := appserver.Event{
+		ID:  "sub-1",
+		Msg: json.RawMessage(`{"type":"exec_command_begin","call_id":"cmd-1","command":"ls -la"}`),
+	}
+	router.HandleEvent(event)
 
 	if len(sender.messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(sender.messages))
@@ -93,7 +83,30 @@ func TestBridgeCommandOutput(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected CommandOutputMsg, got %T", sender.messages[0])
 	}
-	if msg.Data != "hello\n" {
-		t.Errorf("expected hello, got %s", msg.Data)
+	if msg.ExecID != "cmd-1" {
+		t.Errorf("expected cmd-1, got %s", msg.ExecID)
+	}
+}
+
+func TestBridgeServerError(t *testing.T) {
+	sender := &mockSender{}
+	router := appserver.NewEventRouter()
+	WireEventBridge(router, sender)
+
+	event := appserver.Event{
+		ID:  "",
+		Msg: json.RawMessage(`{"type":"error","message":"something broke"}`),
+	}
+	router.HandleEvent(event)
+
+	if len(sender.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(sender.messages))
+	}
+	msg, ok := sender.messages[0].(AppServerErrorMsg)
+	if !ok {
+		t.Fatalf("expected AppServerErrorMsg, got %T", sender.messages[0])
+	}
+	if msg.Error() != "something broke" {
+		t.Errorf("expected 'something broke', got %s", msg.Error())
 	}
 }

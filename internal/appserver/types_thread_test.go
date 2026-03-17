@@ -5,70 +5,70 @@ import (
 	"testing"
 )
 
-func TestThreadStartParamsMarshal(t *testing.T) {
-	params := ThreadStartParams{
-		Model: "gpt-4o",
+func TestUserTurnOpMarshal(t *testing.T) {
+	op := UserTurnOp{
+		Type:           OpUserTurn,
+		Items:          []UserInput{NewTextInput("hello")},
+		Cwd:            "/home/user",
+		ApprovalPolicy: "on-request",
+		SandboxPolicy:  SandboxPolicyReadOnly(),
+		Model:          "gpt-4o",
 	}
-	data, err := json.Marshal(params)
+	data, err := json.Marshal(op)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var parsed map[string]any
 	json.Unmarshal(data, &parsed)
+	if parsed["type"] != "user_turn" {
+		t.Errorf("expected user_turn, got %v", parsed["type"])
+	}
 	if parsed["model"] != "gpt-4o" {
-		t.Errorf("expected model gpt-4o, got %v", parsed["model"])
+		t.Errorf("expected gpt-4o, got %v", parsed["model"])
 	}
 }
 
-func TestThreadStartParamsOmitsEmptyModel(t *testing.T) {
-	params := ThreadStartParams{}
-	data, err := json.Marshal(params)
-	if err != nil {
-		t.Fatal(err)
+func TestNewTextInput(t *testing.T) {
+	input := NewTextInput("hello world")
+	if input.Type != "text" {
+		t.Errorf("expected text, got %s", input.Type)
 	}
+	if input.Text != "hello world" {
+		t.Errorf("expected hello world, got %s", input.Text)
+	}
+	if input.TextElements == nil {
+		t.Error("expected non-nil text_elements")
+	}
+}
+
+func TestSandboxPolicyReadOnly(t *testing.T) {
+	policy := SandboxPolicyReadOnly()
+	var parsed map[string]any
+	json.Unmarshal(policy, &parsed)
+	if parsed["type"] != "read-only" {
+		t.Errorf("expected read-only, got %v", parsed["type"])
+	}
+}
+
+func TestSandboxPolicyWorkspaceWrite(t *testing.T) {
+	policy := SandboxPolicyWorkspaceWrite([]string{"/home/user/project"})
+	var parsed map[string]any
+	json.Unmarshal(policy, &parsed)
+	if parsed["type"] != "workspace-write" {
+		t.Errorf("expected workspace-write, got %v", parsed["type"])
+	}
+	roots := parsed["writable_roots"].([]any)
+	if len(roots) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(roots))
+	}
+}
+
+func TestInterruptOpMarshal(t *testing.T) {
+	op := InterruptOp{Type: OpInterrupt}
+	data, _ := json.Marshal(op)
 	var parsed map[string]any
 	json.Unmarshal(data, &parsed)
-	if _, hasModel := parsed["model"]; hasModel {
-		t.Error("expected model to be omitted when empty")
-	}
-}
-
-func TestThreadStartResultUnmarshal(t *testing.T) {
-	raw := `{"thread":{"id":"thr_abc123"}}`
-	var result ThreadStartResult
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		t.Fatal(err)
-	}
-	if result.Thread.ID != "thr_abc123" {
-		t.Errorf("expected thr_abc123, got %s", result.Thread.ID)
-	}
-}
-
-func TestThreadListResultUnmarshal(t *testing.T) {
-	raw := `{"threads":[{"id":"t-1","status":"active","title":"Test"}]}`
-	var result ThreadListResult
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Threads) != 1 {
-		t.Fatalf("expected 1 thread, got %d", len(result.Threads))
-	}
-	if result.Threads[0].ID != "t-1" {
-		t.Errorf("expected id t-1, got %s", result.Threads[0].ID)
-	}
-	if result.Threads[0].Status != "active" {
-		t.Errorf("expected status active, got %s", result.Threads[0].Status)
-	}
-}
-
-func TestThreadStatusValues(t *testing.T) {
-	if ThreadStatusActive != "active" {
-		t.Errorf("expected active, got %s", ThreadStatusActive)
-	}
-	if ThreadStatusCompleted != "completed" {
-		t.Errorf("expected completed, got %s", ThreadStatusCompleted)
-	}
-	if ThreadStatusError != "error" {
-		t.Errorf("expected error, got %s", ThreadStatusError)
+	if parsed["type"] != "interrupt" {
+		t.Errorf("expected interrupt, got %v", parsed["type"])
 	}
 }

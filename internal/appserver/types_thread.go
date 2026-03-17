@@ -1,43 +1,61 @@
 package appserver
 
-const (
-	ThreadStatusActive    = "active"
-	ThreadStatusIdle      = "idle"
-	ThreadStatusCompleted = "completed"
-	ThreadStatusError     = "error"
-)
+import "encoding/json"
 
-type ThreadStartParams struct {
-	Model string `json:"model,omitempty"`
+// UserTurnOp is the "user_turn" submission operation.
+type UserTurnOp struct {
+	Type           string          `json:"type"`
+	Items          []UserInput     `json:"items"`
+	Cwd            string          `json:"cwd"`
+	ApprovalPolicy string          `json:"approval_policy"`
+	SandboxPolicy  json.RawMessage `json:"sandbox_policy"`
+	Model          string          `json:"model"`
 }
 
-type ThreadStartResult struct {
-	Thread ThreadInfo `json:"thread"`
+// UserInput is a content item in a user turn.
+type UserInput struct {
+	Type         string `json:"type"`
+	Text         string `json:"text,omitempty"`
+	TextElements []any  `json:"text_elements,omitempty"`
 }
 
-type ThreadInfo struct {
-	ID string `json:"id"`
+// NewTextInput creates a text user input item.
+func NewTextInput(text string) UserInput {
+	return UserInput{
+		Type:         "text",
+		Text:         text,
+		TextElements: []any{},
+	}
 }
 
-type ThreadArchiveParams struct {
-	ThreadID string `json:"threadId"`
+// SandboxPolicyReadOnly creates a read-only sandbox policy.
+func SandboxPolicyReadOnly() json.RawMessage {
+	return json.RawMessage(`{"type":"read-only","network_access":false}`)
 }
 
-type ThreadListResult struct {
-	Threads []ThreadSummary `json:"threads"`
+// SandboxPolicyWorkspaceWrite creates a workspace-write sandbox policy.
+func SandboxPolicyWorkspaceWrite(roots []string) json.RawMessage {
+	policy := map[string]any{
+		"type":           "workspace-write",
+		"writable_roots": roots,
+		"network_access": false,
+	}
+	data, _ := json.Marshal(policy)
+	return data
 }
 
-type ThreadSummary struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Title  string `json:"title"`
+// InterruptOp is the "interrupt" submission operation.
+type InterruptOp struct {
+	Type string `json:"type"`
 }
 
-type TurnStartParams struct {
-	ThreadID string `json:"threadId"`
-	Content  string `json:"content"`
+// ShutdownOp is the "shutdown" submission operation.
+type ShutdownOp struct {
+	Type string `json:"type"`
 }
 
-type TurnStartResult struct {
-	TurnID string `json:"turnId"`
+// ExecApprovalOp is the "exec_approval" submission operation.
+type ExecApprovalOp struct {
+	Type     string `json:"type"`
+	Approved bool   `json:"approved"`
 }

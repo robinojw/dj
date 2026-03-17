@@ -2,100 +2,128 @@ package appserver
 
 import "encoding/json"
 
-type NotificationRouter struct {
-	handlers map[string]func(json.RawMessage)
+// EventRouter dispatches incoming events by their type field.
+type EventRouter struct {
+	handlers map[string]func(string, json.RawMessage)
 }
 
-func NewNotificationRouter() *NotificationRouter {
-	return &NotificationRouter{
-		handlers: make(map[string]func(json.RawMessage)),
+// NewEventRouter creates a new event router.
+func NewEventRouter() *EventRouter {
+	return &EventRouter{
+		handlers: make(map[string]func(string, json.RawMessage)),
 	}
 }
 
-func (router *NotificationRouter) Handle(method string, params json.RawMessage) {
-	handler, exists := router.handlers[method]
+// HandleEvent extracts the event type and dispatches to the registered handler.
+func (router *EventRouter) HandleEvent(event Event) {
+	var header EventHeader
+	if err := json.Unmarshal(event.Msg, &header); err != nil {
+		return
+	}
+
+	handler, exists := router.handlers[header.Type]
 	if !exists {
 		return
 	}
-	handler(params)
+	handler(event.ID, event.Msg)
 }
 
-func (router *NotificationRouter) OnThreadStatusChanged(fn func(ThreadStatusChanged)) {
-	router.handlers[NotifyThreadStatusChanged] = func(raw json.RawMessage) {
-		var params ThreadStatusChanged
-		if err := json.Unmarshal(raw, &params); err != nil {
+func (router *EventRouter) OnSessionConfigured(fn func(SessionConfigured)) {
+	router.handlers[EventSessionConfigured] = func(_ string, raw json.RawMessage) {
+		var event SessionConfigured
+		if err := json.Unmarshal(raw, &event); err != nil {
 			return
 		}
-		fn(params)
+		fn(event)
 	}
 }
 
-func (router *NotificationRouter) OnItemStarted(fn func(ItemStarted)) {
-	router.handlers[NotifyItemStarted] = func(raw json.RawMessage) {
-		var params ItemStarted
-		if err := json.Unmarshal(raw, &params); err != nil {
+func (router *EventRouter) OnTaskStarted(fn func(TaskStarted)) {
+	router.handlers[EventTaskStarted] = func(_ string, raw json.RawMessage) {
+		var event TaskStarted
+		if err := json.Unmarshal(raw, &event); err != nil {
 			return
 		}
-		fn(params)
+		fn(event)
 	}
 }
 
-func (router *NotificationRouter) OnItemCompleted(fn func(ItemCompleted)) {
-	router.handlers[NotifyItemCompleted] = func(raw json.RawMessage) {
-		var params ItemCompleted
-		if err := json.Unmarshal(raw, &params); err != nil {
+func (router *EventRouter) OnTaskComplete(fn func(TaskComplete)) {
+	router.handlers[EventTaskComplete] = func(_ string, raw json.RawMessage) {
+		var event TaskComplete
+		if err := json.Unmarshal(raw, &event); err != nil {
 			return
 		}
-		fn(params)
+		fn(event)
 	}
 }
 
-func (router *NotificationRouter) OnItemMessageDelta(fn func(ItemMessageDelta)) {
-	router.handlers[NotifyItemMessageDelta] = func(raw json.RawMessage) {
-		var params ItemMessageDelta
-		if err := json.Unmarshal(raw, &params); err != nil {
+func (router *EventRouter) OnAgentMessage(fn func(AgentMessage)) {
+	router.handlers[EventAgentMessage] = func(_ string, raw json.RawMessage) {
+		var event AgentMessage
+		if err := json.Unmarshal(raw, &event); err != nil {
 			return
 		}
-		fn(params)
+		fn(event)
 	}
 }
 
-func (router *NotificationRouter) OnTurnStarted(fn func(TurnStarted)) {
-	router.handlers[NotifyTurnStarted] = func(raw json.RawMessage) {
-		var params TurnStarted
-		if err := json.Unmarshal(raw, &params); err != nil {
+func (router *EventRouter) OnAgentMessageDelta(fn func(AgentMessageDelta)) {
+	router.handlers[EventAgentMessageDelta] = func(_ string, raw json.RawMessage) {
+		var event AgentMessageDelta
+		if err := json.Unmarshal(raw, &event); err != nil {
 			return
 		}
-		fn(params)
+		fn(event)
 	}
 }
 
-func (router *NotificationRouter) OnTurnCompleted(fn func(TurnCompleted)) {
-	router.handlers[NotifyTurnCompleted] = func(raw json.RawMessage) {
-		var params TurnCompleted
-		if err := json.Unmarshal(raw, &params); err != nil {
+func (router *EventRouter) OnExecCommandBegin(fn func(ExecCommandBegin)) {
+	router.handlers[EventExecCommandBegin] = func(_ string, raw json.RawMessage) {
+		var event ExecCommandBegin
+		if err := json.Unmarshal(raw, &event); err != nil {
 			return
 		}
-		fn(params)
+		fn(event)
 	}
 }
 
-func (router *NotificationRouter) OnCommandOutput(fn func(CommandOutput)) {
-	router.handlers[NotifyCommandOutput] = func(raw json.RawMessage) {
-		var params CommandOutput
-		if err := json.Unmarshal(raw, &params); err != nil {
+func (router *EventRouter) OnExecCommandOutputDelta(fn func(ExecCommandOutputDelta)) {
+	router.handlers[EventExecCommandOutputDelta] = func(_ string, raw json.RawMessage) {
+		var event ExecCommandOutputDelta
+		if err := json.Unmarshal(raw, &event); err != nil {
 			return
 		}
-		fn(params)
+		fn(event)
 	}
 }
 
-func (router *NotificationRouter) OnCommandFinished(fn func(CommandFinished)) {
-	router.handlers[NotifyCommandFinished] = func(raw json.RawMessage) {
-		var params CommandFinished
-		if err := json.Unmarshal(raw, &params); err != nil {
+func (router *EventRouter) OnExecCommandEnd(fn func(ExecCommandEnd)) {
+	router.handlers[EventExecCommandEnd] = func(_ string, raw json.RawMessage) {
+		var event ExecCommandEnd
+		if err := json.Unmarshal(raw, &event); err != nil {
 			return
 		}
-		fn(params)
+		fn(event)
+	}
+}
+
+func (router *EventRouter) OnExecApprovalRequest(fn func(ExecApprovalRequest)) {
+	router.handlers[EventExecApprovalRequest] = func(_ string, raw json.RawMessage) {
+		var event ExecApprovalRequest
+		if err := json.Unmarshal(raw, &event); err != nil {
+			return
+		}
+		fn(event)
+	}
+}
+
+func (router *EventRouter) OnError(fn func(ServerError)) {
+	router.handlers[EventError] = func(_ string, raw json.RawMessage) {
+		var event ServerError
+		if err := json.Unmarshal(raw, &event); err != nil {
+			return
+		}
+		fn(event)
 	}
 }

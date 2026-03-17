@@ -41,7 +41,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 	client := appserver.NewClient(cfg.AppServer.Command, cfg.AppServer.Args...)
 	defer client.Stop()
 
-	router := appserver.NewNotificationRouter()
+	router := appserver.NewEventRouter()
 	client.Router = router
 
 	store := state.NewThreadStore()

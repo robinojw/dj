@@ -1,58 +1,53 @@
 package appserver
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 )
 
-func (c *Client) StartThread(ctx context.Context, model string) (*ThreadStartResult, error) {
-	params, _ := json.Marshal(ThreadStartParams{
-		Model: model,
-	})
+// SendUserTurn sends a user_turn submission with the given text content.
+func (c *Client) SendUserTurn(text string, cwd string, model string) error {
+	op := UserTurnOp{
+		Type:           OpUserTurn,
+		Items:          []UserInput{NewTextInput(text)},
+		Cwd:            cwd,
+		ApprovalPolicy: "on-request",
+		SandboxPolicy:  SandboxPolicyReadOnly(),
+		Model:          model,
+	}
 
-	resp, err := c.Call(ctx, MethodThreadStart, params)
+	opData, err := json.Marshal(op)
 	if err != nil {
-		return nil, fmt.Errorf("thread/start: %w", err)
-	}
-	if resp.Error != nil {
-		return nil, fmt.Errorf("thread/start: %w", resp.Error)
+		return fmt.Errorf("marshal user_turn op: %w", err)
 	}
 
-	var result ThreadStartResult
-	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return nil, fmt.Errorf("unmarshal thread/start result: %w", err)
+	sub := &Submission{
+		ID: c.NextID(),
+		Op: opData,
 	}
-	return &result, nil
+	return c.Send(sub)
 }
 
-func (c *Client) ListThreads(ctx context.Context) (*ThreadListResult, error) {
-	resp, err := c.Call(ctx, MethodThreadList, json.RawMessage(`{}`))
-	if err != nil {
-		return nil, fmt.Errorf("thread/list: %w", err)
-	}
-	if resp.Error != nil {
-		return nil, fmt.Errorf("thread/list: %w", resp.Error)
-	}
+// SendInterrupt sends an interrupt submission to stop the current turn.
+func (c *Client) SendInterrupt() error {
+	op := InterruptOp{Type: OpInterrupt}
+	opData, _ := json.Marshal(op)
 
-	var result ThreadListResult
-	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return nil, fmt.Errorf("unmarshal thread/list result: %w", err)
+	sub := &Submission{
+		ID: c.NextID(),
+		Op: opData,
 	}
-	return &result, nil
+	return c.Send(sub)
 }
 
-func (c *Client) ArchiveThread(ctx context.Context, threadID string) error {
-	params, _ := json.Marshal(ThreadArchiveParams{
-		ThreadID: threadID,
-	})
+// SendShutdown sends a shutdown submission.
+func (c *Client) SendShutdown() error {
+	op := ShutdownOp{Type: OpShutdown}
+	opData, _ := json.Marshal(op)
 
-	resp, err := c.Call(ctx, MethodThreadArchive, params)
-	if err != nil {
-		return fmt.Errorf("thread/archive: %w", err)
+	sub := &Submission{
+		ID: c.NextID(),
+		Op: opData,
 	}
-	if resp.Error != nil {
-		return fmt.Errorf("thread/archive: %w", resp.Error)
-	}
-	return nil
+	return c.Send(sub)
 }

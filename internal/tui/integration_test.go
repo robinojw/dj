@@ -12,7 +12,7 @@ import (
 )
 
 func TestIntegrationEndToEnd(t *testing.T) {
-	client := appserver.NewClient("codex", "app-server", "--listen", "stdio://")
+	client := appserver.NewClient("codex", "proto")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -22,27 +22,27 @@ func TestIntegrationEndToEnd(t *testing.T) {
 	}
 	defer client.Stop()
 
-	router := appserver.NewNotificationRouter()
+	received := make(chan appserver.SessionConfigured, 1)
+	router := appserver.NewEventRouter()
+	router.OnSessionConfigured(func(event appserver.SessionConfigured) {
+		received <- event
+	})
 	client.Router = router
-	go client.ReadLoop(client.Dispatch)
 
-	caps, err := client.Initialize(ctx)
-	if err != nil {
-		t.Fatalf("Initialize failed: %v", err)
-	}
-	t.Logf("Connected: %s %s", caps.ServerInfo.Name, caps.ServerInfo.Version)
+	go client.ReadLoop()
 
-	store := state.NewThreadStore()
+	select {
+	case event := <-received:
+		t.Logf("Connected: session=%s model=%s", event.SessionID, event.Model)
 
-	result, err := client.CreateThread(ctx, "Say hello")
-	if err != nil {
-		t.Fatalf("CreateThread failed: %v", err)
-	}
-	store.Add(result.ThreadID, "Say hello")
-	t.Logf("Created thread: %s", result.ThreadID)
+		store := state.NewThreadStore()
+		store.Add(event.SessionID, event.Model)
 
-	threads := store.All()
-	if len(threads) != 1 {
-		t.Fatalf("expected 1 thread, got %d", len(threads))
+		threads := store.All()
+		if len(threads) != 1 {
+			t.Fatalf("expected 1 thread, got %d", len(threads))
+		}
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for session_configured")
 	}
 }

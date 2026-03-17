@@ -9,45 +9,44 @@ type MessageSender interface {
 	Send(msg tea.Msg)
 }
 
-func WireEventBridge(router *appserver.NotificationRouter, sender MessageSender) {
-	router.OnThreadStatusChanged(func(params appserver.ThreadStatusChanged) {
-		sender.Send(ThreadStatusMsg{
-			ThreadID: params.ThreadID,
-			Status:   params.Status,
-			Title:    params.Title,
+func WireEventBridge(router *appserver.EventRouter, sender MessageSender) {
+	router.OnSessionConfigured(func(event appserver.SessionConfigured) {
+		sender.Send(AppServerConnectedMsg{
+			SessionID: event.SessionID,
+			Model:     event.Model,
 		})
 	})
 
-	router.OnItemStarted(func(params appserver.ItemStarted) {
-		sender.Send(ThreadMessageMsg{
-			ThreadID:  params.ThreadID,
-			MessageID: params.ItemID,
-			Role:      params.Role,
-			Content:   "",
-		})
-	})
-
-	router.OnItemMessageDelta(func(params appserver.ItemMessageDelta) {
+	router.OnAgentMessageDelta(func(event appserver.AgentMessageDelta) {
 		sender.Send(ThreadDeltaMsg{
-			ThreadID:  params.ThreadID,
-			MessageID: params.ItemID,
-			Delta:     params.Delta,
+			Delta: event.Delta,
 		})
 	})
 
-	router.OnCommandOutput(func(params appserver.CommandOutput) {
+	router.OnExecCommandBegin(func(event appserver.ExecCommandBegin) {
 		sender.Send(CommandOutputMsg{
-			ThreadID: params.ThreadID,
-			ExecID:   params.ExecID,
-			Data:     params.Data,
+			ExecID: event.ExecID,
+			Data:   "$ " + event.Command + "\n",
 		})
 	})
 
-	router.OnCommandFinished(func(params appserver.CommandFinished) {
+	router.OnExecCommandOutputDelta(func(event appserver.ExecCommandOutputDelta) {
+		sender.Send(CommandOutputMsg{
+			ExecID: event.ExecID,
+			Data:   event.Delta,
+		})
+	})
+
+	router.OnExecCommandEnd(func(event appserver.ExecCommandEnd) {
 		sender.Send(CommandFinishedMsg{
-			ThreadID: params.ThreadID,
-			ExecID:   params.ExecID,
-			ExitCode: params.ExitCode,
+			ExecID:   event.ExecID,
+			ExitCode: event.ExitCode,
+		})
+	})
+
+	router.OnError(func(event appserver.ServerError) {
+		sender.Send(AppServerErrorMsg{
+			Err: &appserver.RPCError{Message: event.Message},
 		})
 	})
 }

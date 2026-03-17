@@ -2,112 +2,97 @@ package appserver
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"io"
 	"testing"
 	"time"
 )
 
-func TestClientStartThread(t *testing.T) {
-	clientRead, serverWrite := io.Pipe()
+func TestSendUserTurn(t *testing.T) {
+	clientRead, _ := io.Pipe()
 	serverRead, clientWrite := io.Pipe()
-
-	go mockThreadStartServer(t, serverRead, serverWrite)
 
 	client := &Client{}
 	client.stdin = clientWrite
 	client.stdout = clientRead
 	client.scanner = bufio.NewScanner(clientRead)
-	client.scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	client.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
 	client.running.Store(true)
 
-	go client.ReadLoop(client.Dispatch)
+	received := make(chan map[string]any, 1)
+	go func() {
+		scanner := bufio.NewScanner(serverRead)
+		scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
+		if scanner.Scan() {
+			var parsed map[string]any
+			json.Unmarshal(scanner.Bytes(), &parsed)
+			received <- parsed
+		}
+	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	result, err := client.StartThread(ctx, "")
+	err := client.SendUserTurn("Hello world", "/tmp", "o4-mini")
 	if err != nil {
-		t.Fatalf("StartThread failed: %v", err)
+		t.Fatalf("SendUserTurn failed: %v", err)
 	}
-	if result.Thread.ID != "thr_new_123" {
-		t.Errorf("expected thr_new_123, got %s", result.Thread.ID)
+
+	select {
+	case msg := <-received:
+		if msg["id"] == nil || msg["id"] == "" {
+			t.Error("expected non-empty id")
+		}
+		opRaw, _ := json.Marshal(msg["op"])
+		var op map[string]any
+		json.Unmarshal(opRaw, &op)
+		if op["type"] != OpUserTurn {
+			t.Errorf("expected user_turn, got %v", op["type"])
+		}
+		if op["model"] != "o4-mini" {
+			t.Errorf("expected model o4-mini, got %v", op["model"])
+		}
+		if op["cwd"] != "/tmp" {
+			t.Errorf("expected cwd /tmp, got %v", op["cwd"])
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for submission")
 	}
 }
 
-func mockThreadStartServer(t *testing.T, reader *io.PipeReader, writer *io.PipeWriter) {
-	t.Helper()
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-
-	if !scanner.Scan() {
-		t.Error("mock: failed to read request")
-		return
-	}
-	var req Message
-	if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-		t.Errorf("mock: unmarshal: %v", err)
-		return
-	}
-
-	resp := Message{
-		ID:     req.ID,
-		Result: json.RawMessage(`{"thread":{"id":"thr_new_123"}}`),
-	}
-	data, _ := json.Marshal(resp)
-	data = append(data, '\n')
-	writer.Write(data)
-}
-
-func TestClientListThreads(t *testing.T) {
-	clientRead, serverWrite := io.Pipe()
+func TestSendInterrupt(t *testing.T) {
+	clientRead, _ := io.Pipe()
 	serverRead, clientWrite := io.Pipe()
-
-	go mockThreadListServer(t, serverRead, serverWrite)
 
 	client := &Client{}
 	client.stdin = clientWrite
 	client.stdout = clientRead
 	client.scanner = bufio.NewScanner(clientRead)
-	client.scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	client.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
 	client.running.Store(true)
 
-	go client.ReadLoop(client.Dispatch)
+	received := make(chan map[string]any, 1)
+	go func() {
+		scanner := bufio.NewScanner(serverRead)
+		scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
+		if scanner.Scan() {
+			var parsed map[string]any
+			json.Unmarshal(scanner.Bytes(), &parsed)
+			received <- parsed
+		}
+	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	result, err := client.ListThreads(ctx)
+	err := client.SendInterrupt()
 	if err != nil {
-		t.Fatalf("ListThreads failed: %v", err)
-	}
-	if len(result.Threads) != 2 {
-		t.Fatalf("expected 2 threads, got %d", len(result.Threads))
-	}
-}
-
-func mockThreadListServer(t *testing.T, reader *io.PipeReader, writer *io.PipeWriter) {
-	t.Helper()
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-
-	if !scanner.Scan() {
-		t.Error("mock: failed to read request")
-		return
-	}
-	var req Message
-	if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-		t.Errorf("mock: unmarshal: %v", err)
-		return
+		t.Fatalf("SendInterrupt failed: %v", err)
 	}
 
-	threadList := `{"threads":[{"id":"t-1","status":"active","title":"A"},{"id":"t-2","status":"idle","title":"B"}]}`
-	resp := Message{
-		ID:     req.ID,
-		Result: json.RawMessage(threadList),
+	select {
+	case msg := <-received:
+		opRaw, _ := json.Marshal(msg["op"])
+		var op map[string]any
+		json.Unmarshal(opRaw, &op)
+		if op["type"] != OpInterrupt {
+			t.Errorf("expected interrupt, got %v", op["type"])
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for submission")
 	}
-	data, _ := json.Marshal(resp)
-	data = append(data, '\n')
-	writer.Write(data)
 }

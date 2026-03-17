@@ -43,123 +43,85 @@ func TestClientSendAndRead(t *testing.T) {
 	}
 	defer client.Stop()
 
-	msgs := make(chan Message, 10)
-	go client.ReadLoop(func(msg Message) {
-		msgs <- msg
+	events := make(chan Event, 10)
+	client.Router = NewEventRouter()
+	client.Router.OnSessionConfigured(func(event SessionConfigured) {
+		events <- Event{Msg: json.RawMessage(`{"type":"session_configured"}`)}
 	})
 
-	req := &Request{
-		ID:     intPtr(1),
-		Method: "test/echo",
-		Params: json.RawMessage(`{"hello":"world"}`),
+	go client.ReadLoop()
+
+	sub := &Submission{
+		ID: "test-1",
+		Op: json.RawMessage(`{"type":"session_configured","session_id":"s1","model":"test"}`),
 	}
-	if err := client.Send(req); err != nil {
-		t.Fatalf("Send failed: %v", err)
+
+	wrappedEvent := Event{
+		ID:  "",
+		Msg: json.RawMessage(`{"type":"session_configured","session_id":"s1","model":"test"}`),
 	}
+	data, _ := json.Marshal(wrappedEvent)
+	client.mu.Lock()
+	data = append(data, '\n')
+	client.stdin.Write(data)
+	client.mu.Unlock()
+	_ = sub
 
 	select {
-	case msg := <-msgs:
-		if msg.Method != "test/echo" {
-			t.Errorf("expected method test/echo, got %s", msg.Method)
-		}
+	case <-events:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timeout waiting for message")
+		t.Fatal("timeout waiting for event")
 	}
 }
 
-func TestClientCall(t *testing.T) {
+func TestClientNextID(t *testing.T) {
 	client := NewClient("cat")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	id1 := client.NextID()
+	id2 := client.NextID()
 
-	if err := client.Start(ctx); err != nil {
-		t.Fatalf("Start failed: %v", err)
+	if id1 == id2 {
+		t.Errorf("expected unique IDs, got %s and %s", id1, id2)
 	}
-	defer client.Stop()
-
-	go client.ReadLoop(client.Dispatch)
-
-	resp, err := client.Call(ctx, "test/method", json.RawMessage(`{"key":"val"}`))
-	if err != nil {
-		t.Fatalf("Call failed: %v", err)
+	if id1 != "sub-1" {
+		t.Errorf("expected sub-1, got %s", id1)
 	}
-
-	if resp == nil {
-		t.Fatal("expected non-nil response")
+	if id2 != "sub-2" {
+		t.Errorf("expected sub-2, got %s", id2)
 	}
 }
 
-func TestInitializeHandshake(t *testing.T) {
+func TestClientReadLoopParsesEvents(t *testing.T) {
 	clientRead, serverWrite := io.Pipe()
-	serverRead, clientWrite := io.Pipe()
-
-	go func() {
-		scanner := bufio.NewScanner(serverRead)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-
-		if !scanner.Scan() {
-			t.Error("mock server: failed to read initialize request")
-			return
-		}
-		var req Message
-		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-			t.Errorf("mock server: unmarshal request: %v", err)
-			return
-		}
-		if req.Method != "initialize" {
-			t.Errorf("mock server: expected method initialize, got %s", req.Method)
-			return
-		}
-
-		resp := Message{
-			ID:     req.ID,
-			Result: json.RawMessage(`{"serverInfo":{"name":"codex-app-server","version":"0.1.0"}}`),
-		}
-		data, _ := json.Marshal(resp)
-		data = append(data, '\n')
-		serverWrite.Write(data)
-
-		if !scanner.Scan() {
-			t.Error("mock server: failed to read initialized notification")
-			return
-		}
-		var notif Message
-		if err := json.Unmarshal(scanner.Bytes(), &notif); err != nil {
-			t.Errorf("mock server: unmarshal notification: %v", err)
-			return
-		}
-		if notif.Method != "initialized" {
-			t.Errorf("mock server: expected method initialized, got %s", notif.Method)
-		}
-		if notif.Params == nil {
-			t.Error("mock server: initialized notification must include params")
-		}
-	}()
 
 	client := &Client{}
-	client.stdin = clientWrite
 	client.stdout = clientRead
 	client.scanner = bufio.NewScanner(clientRead)
-	client.scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	client.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
 	client.running.Store(true)
 
-	go client.ReadLoop(client.Dispatch)
+	received := make(chan SessionConfigured, 1)
+	client.Router = NewEventRouter()
+	client.Router.OnSessionConfigured(func(event SessionConfigured) {
+		received <- event
+	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	go client.ReadLoop()
 
-	caps, err := client.Initialize(ctx)
-	if err != nil {
-		t.Fatalf("Initialize failed: %v", err)
+	eventJSON := `{"id":"","msg":{"type":"session_configured","session_id":"sess-123","model":"gpt-4o"}}` + "\n"
+	serverWrite.Write([]byte(eventJSON))
+
+	select {
+	case event := <-received:
+		if event.SessionID != "sess-123" {
+			t.Errorf("expected sess-123, got %s", event.SessionID)
+		}
+		if event.Model != "gpt-4o" {
+			t.Errorf("expected gpt-4o, got %s", event.Model)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for session_configured event")
 	}
-	if caps == nil {
-		t.Fatal("expected non-nil capabilities")
-	}
-	if caps.ServerInfo.Name != "codex-app-server" {
-		t.Errorf("expected server name codex-app-server, got %s", caps.ServerInfo.Name)
-	}
-	if caps.ServerInfo.Version != "0.1.0" {
-		t.Errorf("expected server version 0.1.0, got %s", caps.ServerInfo.Version)
-	}
+
+	serverWrite.Close()
 }

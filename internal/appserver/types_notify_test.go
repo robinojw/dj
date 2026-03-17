@@ -5,99 +5,85 @@ import (
 	"testing"
 )
 
-func TestThreadStatusChangedUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-1","status":"completed","title":"Done"}`
-	var params ThreadStatusChanged
-	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+func TestSessionConfiguredUnmarshal(t *testing.T) {
+	raw := `{"type":"session_configured","session_id":"sess-1","model":"gpt-4o","reasoning_effort":"high","history_log_id":123,"history_entry_count":5,"rollout_path":"/tmp/rollout.jsonl"}`
+	var event SessionConfigured
+	if err := json.Unmarshal([]byte(raw), &event); err != nil {
 		t.Fatal(err)
 	}
-	if params.ThreadID != "t-1" {
-		t.Errorf("expected t-1, got %s", params.ThreadID)
+	if event.SessionID != "sess-1" {
+		t.Errorf("expected sess-1, got %s", event.SessionID)
 	}
-	if params.Status != ThreadStatusCompleted {
-		t.Errorf("expected completed, got %s", params.Status)
+	if event.Model != "gpt-4o" {
+		t.Errorf("expected gpt-4o, got %s", event.Model)
 	}
 }
 
-func TestItemStartedUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-1","itemId":"item-1","role":"assistant","type":"message"}`
-	var params ItemStarted
-	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+func TestAgentMessageDeltaUnmarshal(t *testing.T) {
+	raw := `{"type":"agent_message_delta","delta":"hello world"}`
+	var event AgentMessageDelta
+	if err := json.Unmarshal([]byte(raw), &event); err != nil {
 		t.Fatal(err)
 	}
-	if params.Role != "assistant" {
-		t.Errorf("expected assistant, got %s", params.Role)
-	}
-	if params.Type != "message" {
-		t.Errorf("expected message, got %s", params.Type)
-	}
-	if params.ItemID != "item-1" {
-		t.Errorf("expected item-1, got %s", params.ItemID)
+	if event.Delta != "hello world" {
+		t.Errorf("expected 'hello world', got %s", event.Delta)
 	}
 }
 
-func TestItemCompletedUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-1","itemId":"item-1","content":"Hello world"}`
-	var params ItemCompleted
-	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+func TestExecCommandBeginUnmarshal(t *testing.T) {
+	raw := `{"type":"exec_command_begin","call_id":"cmd-1","command":"ls -la"}`
+	var event ExecCommandBegin
+	if err := json.Unmarshal([]byte(raw), &event); err != nil {
 		t.Fatal(err)
 	}
-	if params.Content != "Hello world" {
-		t.Errorf("expected Hello world, got %s", params.Content)
+	if event.ExecID != "cmd-1" {
+		t.Errorf("expected cmd-1, got %s", event.ExecID)
+	}
+	if event.Command != "ls -la" {
+		t.Errorf("expected ls -la, got %s", event.Command)
 	}
 }
 
-func TestItemMessageDeltaUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-1","itemId":"item-1","delta":"more text"}`
-	var params ItemMessageDelta
-	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+func TestExecCommandOutputDeltaUnmarshal(t *testing.T) {
+	raw := `{"type":"exec_command_output_delta","call_id":"cmd-1","delta":"output line\n"}`
+	var event ExecCommandOutputDelta
+	if err := json.Unmarshal([]byte(raw), &event); err != nil {
 		t.Fatal(err)
 	}
-	if params.Delta != "more text" {
-		t.Errorf("expected 'more text', got %s", params.Delta)
+	if event.Delta != "output line\n" {
+		t.Errorf("expected output, got %s", event.Delta)
 	}
 }
 
-func TestTurnStartedUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-1","turnId":"turn-1"}`
-	var params TurnStarted
-	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+func TestExecCommandEndUnmarshal(t *testing.T) {
+	raw := `{"type":"exec_command_end","call_id":"cmd-1","exit_code":0}`
+	var event ExecCommandEnd
+	if err := json.Unmarshal([]byte(raw), &event); err != nil {
 		t.Fatal(err)
 	}
-	if params.TurnID != "turn-1" {
-		t.Errorf("expected turn-1, got %s", params.TurnID)
+	if event.ExitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", event.ExitCode)
 	}
 }
 
-func TestTurnCompletedUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-1","turnId":"turn-1"}`
-	var params TurnCompleted
-	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+func TestServerErrorUnmarshal(t *testing.T) {
+	raw := `{"type":"error","message":"something went wrong"}`
+	var event ServerError
+	if err := json.Unmarshal([]byte(raw), &event); err != nil {
 		t.Fatal(err)
 	}
-	if params.TurnID != "turn-1" {
-		t.Errorf("expected turn-1, got %s", params.TurnID)
+	if event.Message != "something went wrong" {
+		t.Errorf("expected error message, got %s", event.Message)
 	}
 }
 
-func TestCommandOutputUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-1","execId":"e-1","data":"line of output\n"}`
-	var params CommandOutput
-	if err := json.Unmarshal([]byte(raw), &params); err != nil {
+func TestExecApprovalRequestUnmarshal(t *testing.T) {
+	raw := `{"type":"exec_approval_request","call_id":"cmd-1","command":"rm -rf /tmp/test"}`
+	var event ExecApprovalRequest
+	if err := json.Unmarshal([]byte(raw), &event); err != nil {
 		t.Fatal(err)
 	}
-	if params.ExecID != "e-1" {
-		t.Errorf("expected e-1, got %s", params.ExecID)
-	}
-}
-
-func TestCommandFinishedUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-1","execId":"e-1","exitCode":0}`
-	var params CommandFinished
-	if err := json.Unmarshal([]byte(raw), &params); err != nil {
-		t.Fatal(err)
-	}
-	if params.ExitCode != 0 {
-		t.Errorf("expected exit code 0, got %d", params.ExitCode)
+	if event.Command != "rm -rf /tmp/test" {
+		t.Errorf("expected command, got %s", event.Command)
 	}
 }

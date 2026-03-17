@@ -2,15 +2,12 @@ package tui
 
 import (
 	"context"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/robinojw/dj/internal/appserver"
 	"github.com/robinojw/dj/internal/state"
 )
-
-const connectTimeout = 10 * time.Second
 
 const (
 	FocusCanvas = iota
@@ -77,20 +74,9 @@ func (app AppModel) Init() tea.Cmd {
 			return AppServerErrorMsg{Err: err}
 		}
 
-		go app.client.ReadLoop(app.client.Dispatch)
+		go app.client.ReadLoop()
 
-		initCtx, cancel := context.WithTimeout(context.Background(), connectTimeout)
-		defer cancel()
-
-		caps, err := app.client.Initialize(initCtx)
-		if err != nil {
-			return AppServerErrorMsg{Err: err}
-		}
-
-		return AppServerConnectedMsg{
-			ServerName:    caps.ServerInfo.Name,
-			ServerVersion: caps.ServerInfo.Version,
-		}
+		return nil
 	}
 }
 
@@ -122,6 +108,9 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AppServerConnectedMsg:
 		app.connected = true
 		app.statusBar.SetConnected(true)
+		app.store.Add(msg.SessionID, msg.Model)
+		app.statusBar.SetThreadCount(len(app.store.All()))
+		app.statusBar.SetSelectedThread(msg.Model)
 		return app, nil
 	case AppServerErrorMsg:
 		app.statusBar.SetError(msg.Error())
@@ -173,27 +162,15 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		app.helpVisible = !app.helpVisible
 	case "n":
 		if !app.connected {
-			app.statusBar.SetError("waiting for app-server — is codex CLI installed?")
+			app.statusBar.SetError("waiting for codex — is codex CLI installed?")
 			return app, nil
 		}
-		return app, app.createThreadCmd()
+		app.statusBar.SetError("single session mode — session auto-created on connect")
+		return app, nil
 	}
 	return app, nil
 }
 
-func (app AppModel) createThreadCmd() tea.Cmd {
-	return func() tea.Msg {
-		result, err := app.client.StartThread(context.Background(), "")
-		if err != nil {
-			return AppServerErrorMsg{Err: err}
-		}
-
-		return ThreadCreatedMsg{
-			ThreadID: result.Thread.ID,
-			Title:    "New thread",
-		}
-	}
-}
 
 func (app AppModel) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	isToggle := msg.Type == tea.KeyRunes && msg.String() == "?"
