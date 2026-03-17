@@ -1,8 +1,10 @@
 package appserver
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"io"
 	"testing"
 	"time"
 )
@@ -96,5 +98,85 @@ func TestClientCall(t *testing.T) {
 	// The echo will have params (not result), but the call resolved because ID matched
 	if resp == nil {
 		t.Fatal("expected non-nil response")
+	}
+}
+
+func TestInitializeHandshake(t *testing.T) {
+	// Set up bidirectional pipes to simulate app-server
+	// client writes -> serverRead, serverWrite -> clientRead
+	clientRead, serverWrite := io.Pipe()
+	serverRead, clientWrite := io.Pipe()
+
+	// Mock server: reads initialize request, writes back capabilities response,
+	// then reads the initialized notification
+	go func() {
+		scanner := bufio.NewScanner(serverRead)
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+
+		// Read initialize request
+		if !scanner.Scan() {
+			t.Error("mock server: failed to read initialize request")
+			return
+		}
+		var req Message
+		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
+			t.Errorf("mock server: unmarshal request: %v", err)
+			return
+		}
+		if req.Method != "initialize" {
+			t.Errorf("mock server: expected method initialize, got %s", req.Method)
+			return
+		}
+
+		// Write capabilities response
+		resp := Message{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result:  json.RawMessage(`{"serverInfo":{"name":"codex-app-server","version":"0.1.0"}}`),
+		}
+		data, _ := json.Marshal(resp)
+		data = append(data, '\n')
+		serverWrite.Write(data)
+
+		// Read initialized notification
+		if !scanner.Scan() {
+			t.Error("mock server: failed to read initialized notification")
+			return
+		}
+		var notif Message
+		if err := json.Unmarshal(scanner.Bytes(), &notif); err != nil {
+			t.Errorf("mock server: unmarshal notification: %v", err)
+			return
+		}
+		if notif.Method != "initialized" {
+			t.Errorf("mock server: expected method initialized, got %s", notif.Method)
+		}
+	}()
+
+	// Set up client with our pipes instead of a real process
+	client := &Client{}
+	client.stdin = clientWrite
+	client.stdout = clientRead
+	client.scanner = bufio.NewScanner(clientRead)
+	client.scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	client.running.Store(true)
+
+	go client.ReadLoop(client.Dispatch)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	caps, err := client.Initialize(ctx)
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+	if caps == nil {
+		t.Fatal("expected non-nil capabilities")
+	}
+	if caps.ServerInfo.Name != "codex-app-server" {
+		t.Errorf("expected server name codex-app-server, got %s", caps.ServerInfo.Name)
+	}
+	if caps.ServerInfo.Version != "0.1.0" {
+		t.Errorf("expected server version 0.1.0, got %s", caps.ServerInfo.Version)
 	}
 }

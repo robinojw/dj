@@ -178,3 +178,62 @@ func (c *Client) Dispatch(msg Message) {
 		c.OnNotification(msg.Method, msg.Params)
 	}
 }
+
+// InitializeParams is sent as the first request to the app-server.
+type InitializeParams struct {
+	ClientInfo ClientInfo `json:"clientInfo"`
+}
+
+// ClientInfo identifies this client to the app-server.
+type ClientInfo struct {
+	Name    string `json:"name"`
+	Title   string `json:"title"`
+	Version string `json:"version"`
+}
+
+// ServerCapabilities is the result of the initialize request.
+type ServerCapabilities struct {
+	ServerInfo struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	} `json:"serverInfo"`
+}
+
+// Initialize performs the required handshake with the app-server.
+// Sends initialize request, receives capabilities, then sends initialized notification.
+func (c *Client) Initialize(ctx context.Context) (*ServerCapabilities, error) {
+	params, _ := json.Marshal(InitializeParams{
+		ClientInfo: ClientInfo{
+			Name:    "dj",
+			Title:   "DJ — Codex TUI Visualizer",
+			Version: "0.1.0",
+		},
+	})
+
+	resp, err := c.Call(ctx, "initialize", params)
+	if err != nil {
+		return nil, fmt.Errorf("initialize request: %w", err)
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("initialize error: %s", resp.Error.Message)
+	}
+
+	var caps ServerCapabilities
+	if resp.Result != nil {
+		if err := json.Unmarshal(resp.Result, &caps); err != nil {
+			return nil, fmt.Errorf("unmarshal capabilities: %w", err)
+		}
+	}
+
+	// Send the initialized notification (no id, no response expected)
+	notif := &Request{
+		JSONRPC: "2.0",
+		Method:  "initialized",
+	}
+	if err := c.Send(notif); err != nil {
+		return nil, fmt.Errorf("send initialized: %w", err)
+	}
+
+	return &caps, nil
+}
