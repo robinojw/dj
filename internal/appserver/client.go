@@ -93,3 +93,36 @@ func (c *Client) Stop() error {
 	}
 	return nil
 }
+
+// Send writes a JSON-RPC request to the child's stdin as a JSONL line.
+func (c *Client) Send(req *Request) error {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	data = append(data, '\n')
+	_, err = c.stdin.Write(data)
+	return err
+}
+
+// ReadLoop reads JSONL from stdout and dispatches each message to the callback.
+// It blocks until the scanner is exhausted (stdout closed) or an error occurs.
+func (c *Client) ReadLoop(handler func(Message)) {
+	for c.scanner.Scan() {
+		line := c.scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		var msg Message
+		if err := json.Unmarshal(line, &msg); err != nil {
+			continue // skip malformed lines
+		}
+
+		handler(msg)
+	}
+}
