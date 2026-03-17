@@ -3,6 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/robinojw/dj/internal/state"
+	"github.com/robinojw/dj/internal/tui"
 )
 
 func main() {
@@ -13,6 +17,10 @@ func main() {
 }
 
 func run() error {
-	fmt.Println("dj — Codex TUI Visualizer")
-	return nil
+	store := state.NewThreadStore()
+	app := tui.NewAppModel(store)
+
+	program := tea.NewProgram(app, tea.WithAltScreen())
+	_, err := program.Run()
+	return err
 }
