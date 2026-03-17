@@ -4,21 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DJ is a Go TUI application that orchestrates AI agents in the terminal. It uses the OpenAI Responses API with SSE streaming, spawns parallel worker agents for complex tasks, and provides a permission-gated tool execution system. Built on Charmbracelet's Bubble Tea framework.
+DJ is a Go TUI that visualizes and controls OpenAI Codex CLI agent sessions via the Codex App Server's JSON-RPC 2.0 stdio protocol. It uses an event-driven Bubble Tea architecture where a reactive `ThreadStore` is the single source of truth, populated by protocol events and driving canvas card rendering.
 
 ## Commands
 
 ```bash
 # Build
-go build -o dj ./cmd/harness
+go build -o dj ./cmd/dj
 
 # Run
 ./dj
 
 # Test
-go test ./...                        # all tests
-go test ./internal/agents -v         # single package, verbose
-go test ./internal/tools -run TestEditFile -v  # single test
+go test ./...                                  # all tests
+go test ./internal/appserver -v                # single package, verbose
+go test ./internal/appserver -run TestClientCall -v  # single test
+
+# Integration test (requires codex CLI installed)
+go test ./internal/appserver -v -tags=integration
 
 # Lint (runs in CI via golangci-lint action)
 golangci-lint run
@@ -29,45 +32,33 @@ go test ./... -v -race
 
 ## Architecture
 
-Entry point: `cmd/harness/main.go`
+Entry point: `cmd/dj/main.go`
 
 ### Core packages under `internal/`:
 
-- **agents/**: Multi-agent orchestration. `Orchestrator` decomposes tasks into subtasks, `DAG` schedules them via topological sort (Kahn's algorithm), `Worker` goroutines execute subtasks with independent context and multi-turn tool call loops (up to 25 turns). `TaskRouter` analyzes complexity and routes appropriately.
+- **appserver/**: IPC layer for the Codex App Server. Spawns `codex app-server --listen stdio://` as a child process. `Client` manages bidirectional JSON-RPC 2.0 over stdio (JSONL). `ReadLoop` reads newline-delimited JSON from stdout. `Dispatch` routes messages: pending-request responses, server-to-client requests, and notifications. `Call` provides synchronous request/response with a `sync.Map`-based pending tracker. `Initialize` performs the required handshake.
 
-- **api/**: OpenAI Responses API client. `ResponsesClient` streams SSE from `/v1/responses`. `Tracker` records token usage and costs. Request/response types in `models.go`. Tool schemas and instructions are sent with chat requests.
+- **state/** (planned): Reactive state store. `ThreadStore` maps thread IDs to `ThreadState`. Single source of truth — no direct app-server queries for UI.
 
-- **tools/**: Native Go tool implementations with a `ToolRegistry`. Each tool has `ToolAnnotations` (ReadOnly, Destructive, Idempotent, MutatesFiles) used by the permission system. `edit_file` uses 3-tier whitespace-tolerant string matching (exact → trimmed → normalized).
+- **tui/** (planned): Bubble Tea TUI layer. Canvas grid of agent cards, session panes with terminal output, agent tree navigation, overlay screens. tmux-style `Ctrl+B` prefix key for pane operations.
 
-- **modes/**: Permission system with three execution modes (Confirm/Plan/Turbo). `Gate` evaluates tool calls against deny list → allow list → mode rules. Glob patterns supported for tool matching (e.g., `bash(git status*)`).
-
-- **tui/**: Bubble Tea TUI with screen-based navigation. Main screens: Chat, Team (multi-agent view), Skill Browser, MCP Manager, Enhance, Cheat Sheet. Components: chat input, status bar, permission modal, debug overlay.
-
-- **mcp/**: Model Context Protocol client supporting stdio and HTTP transports. Auto-discovers servers from `~/.config/claude/mcp.json` and `~/.config/codex-harness/mcp.json`. JSON-RPC 2.0.
-
-- **skills/**: Loads SKILL.md files (YAML frontmatter + instructions) from configured paths. Supports trigger keywords and implicit invocation.
-
-- **lsp/**: Auto-detects language servers by marker files (go.mod → gopls, tsconfig.json → typescript-language-server, pyproject.toml → pylsp).
-
-- **checkpoint/**: Ring buffer (20 entries) for undo state snapshots (Ctrl+Z).
-
-- **config/**: Two-level TOML config loading — project `harness.toml` + user `~/.config/codex-harness/config.toml`.
+- **config/** (planned): Viper-based config loader with TOML format.
 
 ### Key patterns
 
-- Goroutine-based concurrency with channels for worker communication and `sync.Mutex` for shared state
+- Single app-server process per TUI instance; multiple threads managed via JSON-RPC
+- External goroutine (JSON-RPC reader) injects events via `program.Send(msg)` (Bubble Tea message passing)
+- PTY I/O routes through `command/exec` with `tty: true` over the existing JSON-RPC connection
 - All APIs accept `context.Context` for cancellation
-- Interface-based design: `ToolClassifier`, `ToolHandler` for pluggable tools
-- Annotation-driven tool metadata feeds into permission gate decisions
-- Screen stacking in TUI for modal navigation
+- Goroutine-based concurrency with channels and `sync.Mutex` for shared state
 
 ## Configuration
 
-Project config: `harness.toml` (TOML). Sections: `[model]`, `[theme]`, `[execution]`, `[execution.allow]`, `[execution.deny]`, `[mcp.servers]`, `[skills]`, `[hooks]`. User overrides in `~/.config/codex-harness/config.toml`.
+Project config: `dj.toml` (TOML, planned). Viper-based with cobra CLI integration.
 
 ## Dependencies
 
-Core: Bubble Tea (TUI), Lipgloss (styling), Bubbles (UI components), BurntSushi/toml, go-humanize, yaml.v3. LSP via go.lsp.dev packages. No external test frameworks — standard `testing` package only.
+Core: Bubble Tea (TUI), Lipgloss (styling), Bubbles (components), cobra+viper (CLI+config), JSON-RPC 2.0 over stdio. No external test frameworks — standard `testing` package only.
 
 ## Code Style
 
@@ -103,3 +94,9 @@ Extract numeric literals (buffer sizes, timeouts, weights, permissions) into nam
 
 ### 8. Use fmt.Errorf for errors
 Always use `fmt.Errorf("context: %w", err)` for error wrapping. Never use `fmt.Sprintf("Error: %v", err)`.
+
+## CI Enforcement
+
+- **golangci-lint**: govet, staticcheck, funlen (60 lines max), cyclop (complexity 15 max)
+- **File length**: 300 lines max for non-test, non-generated `.go` files
+- **Race detector**: `go test -race` on all packages

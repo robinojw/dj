@@ -9,7 +9,7 @@ before:
 
 builds:
   - id: dj
-    main: ./cmd/harness/main.go
+    main: ./cmd/dj/main.go
     binary: dj
     ldflags:
       - -s -w
@@ -36,10 +36,7 @@ archives:
       - goos: windows
         format: zip
     files:
-      - README.md
       - LICENSE
-      - themes/**
-      - skills/**
 
 checksum:
   name_template: "checksums.txt"
@@ -70,7 +67,7 @@ brews:
       token: "{{ .Env.GH_PAT }}"
     directory: Formula
     homepage: "https://github.com/robinojw/dj"
-    description: "DJ — an AI coding harness TUI for OpenAI Codex"
+    description: "DJ — Codex TUI Visualizer"
     license: "MIT"
     dependencies:
       - name: git
