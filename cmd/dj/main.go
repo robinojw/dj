@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
+	"github.com/robinojw/dj/internal/appserver"
 	"github.com/robinojw/dj/internal/config"
 	"github.com/robinojw/dj/internal/state"
 	"github.com/robinojw/dj/internal/tui"
@@ -37,12 +38,22 @@ func runApp(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	_ = cfg
+	client := appserver.NewClient(cfg.AppServer.Command, cfg.AppServer.Args...)
+	defer client.Stop()
 
 	store := state.NewThreadStore()
-	app := tui.NewAppModel(store)
+	app := tui.NewAppModel(
+		store,
+		tui.WithClient(client),
+		tui.WithInteractiveCommand(cfg.Interactive.Command, cfg.Interactive.Args...),
+	)
 
 	program := tea.NewProgram(app, tea.WithAltScreen())
-	_, err = program.Run()
+	finalModel, err := program.Run()
+
+	if finalApp, ok := finalModel.(tui.AppModel); ok {
+		finalApp.StopAllPTYSessions()
+	}
+
 	return err
 }

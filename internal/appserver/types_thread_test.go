@@ -5,57 +5,92 @@ import (
 	"testing"
 )
 
-func TestThreadCreateParamsMarshal(t *testing.T) {
-	params := ThreadCreateParams{
-		Instructions: "Build a web server",
+func TestSessionConfiguredUnmarshal(t *testing.T) {
+	raw := `{"type":"session_configured","session_id":"s-123","model":"o4-mini","reasoning_effort":"medium","history_log_id":0}`
+	var cfg SessionConfigured
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		t.Fatal(err)
 	}
-	data, err := json.Marshal(params)
+	if cfg.SessionID != "s-123" {
+		t.Errorf("expected s-123, got %s", cfg.SessionID)
+	}
+	if cfg.Model != "o4-mini" {
+		t.Errorf("expected o4-mini, got %s", cfg.Model)
+	}
+}
+
+func TestTaskStartedUnmarshal(t *testing.T) {
+	raw := `{"type":"task_started","model_context_window":200000}`
+	var started TaskStarted
+	if err := json.Unmarshal([]byte(raw), &started); err != nil {
+		t.Fatal(err)
+	}
+	if started.ModelContextWindow != 200000 {
+		t.Errorf("expected 200000, got %d", started.ModelContextWindow)
+	}
+}
+
+func TestTaskCompleteUnmarshal(t *testing.T) {
+	raw := `{"type":"task_complete","last_agent_message":"Hello"}`
+	var complete TaskComplete
+	if err := json.Unmarshal([]byte(raw), &complete); err != nil {
+		t.Fatal(err)
+	}
+	if complete.LastAgentMessage != "Hello" {
+		t.Errorf("expected Hello, got %s", complete.LastAgentMessage)
+	}
+}
+
+func TestAgentDeltaUnmarshal(t *testing.T) {
+	raw := `{"type":"agent_message_delta","delta":"Howdy"}`
+	var delta AgentDelta
+	if err := json.Unmarshal([]byte(raw), &delta); err != nil {
+		t.Fatal(err)
+	}
+	if delta.Delta != "Howdy" {
+		t.Errorf("expected Howdy, got %s", delta.Delta)
+	}
+}
+
+func TestAgentMessageUnmarshal(t *testing.T) {
+	raw := `{"type":"agent_message","message":"Hello world"}`
+	var msg AgentMessage
+	if err := json.Unmarshal([]byte(raw), &msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg.Message != "Hello world" {
+		t.Errorf("expected Hello world, got %s", msg.Message)
+	}
+}
+
+func TestUserInputOpMarshal(t *testing.T) {
+	op := UserInputOp{
+		Type: OpUserInput,
+		Items: []InputItem{
+			{Type: "text", Text: "Say hello"},
+		},
+	}
+	data, err := json.Marshal(op)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var parsed map[string]any
 	json.Unmarshal(data, &parsed)
-	if parsed["instructions"] != "Build a web server" {
-		t.Errorf("expected instructions, got %v", parsed["instructions"])
+	if parsed["type"] != "user_input" {
+		t.Errorf("expected user_input, got %v", parsed["type"])
 	}
 }
 
-func TestThreadCreateResultUnmarshal(t *testing.T) {
-	raw := `{"threadId":"t-abc123"}`
-	var result ThreadCreateResult
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+func TestExecCommandRequestUnmarshal(t *testing.T) {
+	raw := `{"type":"exec_command_request","command":"ls -la","cwd":"/tmp"}`
+	var req ExecCommandRequest
+	if err := json.Unmarshal([]byte(raw), &req); err != nil {
 		t.Fatal(err)
 	}
-	if result.ThreadID != "t-abc123" {
-		t.Errorf("expected t-abc123, got %s", result.ThreadID)
+	if req.Command != "ls -la" {
+		t.Errorf("expected ls -la, got %s", req.Command)
 	}
-}
-
-func TestThreadListResultUnmarshal(t *testing.T) {
-	raw := `{"threads":[{"id":"t-1","status":"active","title":"Test"}]}`
-	var result ThreadListResult
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Threads) != 1 {
-		t.Fatalf("expected 1 thread, got %d", len(result.Threads))
-	}
-	if result.Threads[0].ID != "t-1" {
-		t.Errorf("expected id t-1, got %s", result.Threads[0].ID)
-	}
-	if result.Threads[0].Status != "active" {
-		t.Errorf("expected status active, got %s", result.Threads[0].Status)
-	}
-}
-
-func TestThreadStatusValues(t *testing.T) {
-	if ThreadStatusActive != "active" {
-		t.Errorf("expected active, got %s", ThreadStatusActive)
-	}
-	if ThreadStatusCompleted != "completed" {
-		t.Errorf("expected completed, got %s", ThreadStatusCompleted)
-	}
-	if ThreadStatusError != "error" {
-		t.Errorf("expected error, got %s", ThreadStatusError)
+	if req.Cwd != "/tmp" {
+		t.Errorf("expected /tmp, got %s", req.Cwd)
 	}
 }

@@ -33,9 +33,51 @@ func (app AppModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (app AppModel) handlePrefixAction() (tea.Model, tea.Cmd) {
 	action := app.prefix.Action()
-	if action == 'm' {
+	keyType := app.prefix.KeyType()
+
+	switch {
+	case action == 'm':
 		app.showMenu()
+	case action == 'x':
+		return app.unpinActiveSession()
+	case action == 'z':
+		return app.toggleZoom()
+	case keyType == tea.KeyRight:
+		app.sessionPanel.CycleRight()
+	case keyType == tea.KeyLeft:
+		app.sessionPanel.CycleLeft()
+	case action >= '1' && action <= '9':
+		return app.jumpToPane(action)
 	}
+	return app, nil
+}
+
+func (app AppModel) unpinActiveSession() (tea.Model, tea.Cmd) {
+	activeID := app.sessionPanel.ActiveThreadID()
+	if activeID == "" {
+		return app, nil
+	}
+	app.sessionPanel.Unpin(activeID)
+	hasPinned := len(app.sessionPanel.PinnedSessions()) > 0
+	if !hasPinned {
+		app.focusPane = FocusPaneCanvas
+	}
+	return app, app.rebalancePTYSizes()
+}
+
+func (app AppModel) toggleZoom() (tea.Model, tea.Cmd) {
+	app.sessionPanel.ToggleZoom()
+	return app, app.rebalancePTYSizes()
+}
+
+func (app AppModel) jumpToPane(digit rune) (tea.Model, tea.Cmd) {
+	index := int(digit - '1')
+	pinned := app.sessionPanel.PinnedSessions()
+	if index >= len(pinned) {
+		return app, nil
+	}
+	app.sessionPanel.SetActivePaneIdx(index)
+	app.focusPane = FocusPaneSession
 	return app, nil
 }
 

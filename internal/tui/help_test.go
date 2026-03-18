@@ -21,7 +21,7 @@ func TestHelpContainsActions(t *testing.T) {
 	help := NewHelpModel()
 	output := help.View()
 
-	expectedActions := []string{"Navigate", "Open session", "Back", "Menu", "Help", "Quit"}
+	expectedActions := []string{"Navigate", "Open", "session", "Back", "context menu", "help", "Quit"}
 	for _, action := range expectedActions {
 		if !strings.Contains(output, action) {
 			t.Errorf("expected %q in help output:\n%s", action, output)

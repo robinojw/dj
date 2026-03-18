@@ -5,13 +5,20 @@ import (
 )
 
 const (
-	DefaultAppServerCommand = "codex"
-	DefaultTheme            = "default"
+	DefaultAppServerCommand    = "codex"
+	DefaultInteractiveCommand  = "codex"
+	DefaultTheme               = "default"
 )
 
 type Config struct {
-	AppServer AppServerConfig
-	UI        UIConfig
+	AppServer   AppServerConfig
+	Interactive InteractiveConfig
+	UI          UIConfig
+}
+
+type InteractiveConfig struct {
+	Command string
+	Args    []string
 }
 
 type AppServerConfig struct {
@@ -28,7 +35,9 @@ func Load(path string) (*Config, error) {
 	viperInstance.SetConfigType("toml")
 
 	viperInstance.SetDefault("appserver.command", DefaultAppServerCommand)
-	viperInstance.SetDefault("appserver.args", []string{"app-server", "--listen", "stdio://"})
+	viperInstance.SetDefault("appserver.args", []string{"proto"})
+	viperInstance.SetDefault("interactive.command", DefaultInteractiveCommand)
+	viperInstance.SetDefault("interactive.args", []string{})
 	viperInstance.SetDefault("ui.theme", DefaultTheme)
 
 	if path != "" {
@@ -40,6 +49,10 @@ func Load(path string) (*Config, error) {
 		AppServer: AppServerConfig{
 			Command: viperInstance.GetString("appserver.command"),
 			Args:    viperInstance.GetStringSlice("appserver.args"),
+		},
+		Interactive: InteractiveConfig{
+			Command: viperInstance.GetString("interactive.command"),
+			Args:    viperInstance.GetStringSlice("interactive.args"),
 		},
 		UI: UIConfig{
 			Theme: viperInstance.GetString("ui.theme"),

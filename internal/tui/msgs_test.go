@@ -1,51 +1,58 @@
 package tui
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestMsgTypes(t *testing.T) {
-	statusMsg := ThreadStatusMsg{
-		ThreadID: "t-1",
-		Status:   "active",
-		Title:    "Running",
+	configuredMsg := SessionConfiguredMsg{
+		SessionID: "s-1",
+		Model:     "o4-mini",
 	}
-	if statusMsg.ThreadID != "t-1" {
-		t.Errorf("expected t-1, got %s", statusMsg.ThreadID)
-	}
-
-	messageMsg := ThreadMessageMsg{
-		ThreadID:  "t-1",
-		MessageID: "m-1",
-		Role:      "assistant",
-		Content:   "Hello",
-	}
-	if messageMsg.Role != "assistant" {
-		t.Errorf("expected assistant, got %s", messageMsg.Role)
+	if configuredMsg.SessionID != "s-1" {
+		t.Errorf("expected s-1, got %s", configuredMsg.SessionID)
 	}
 
-	deltaMsg := ThreadDeltaMsg{
-		ThreadID:  "t-1",
-		MessageID: "m-1",
-		Delta:     "world",
-	}
-	if deltaMsg.Delta != "world" {
-		t.Errorf("expected world, got %s", deltaMsg.Delta)
+	deltaMsg := AgentDeltaMsg{Delta: "hello"}
+	if deltaMsg.Delta != "hello" {
+		t.Errorf("expected hello, got %s", deltaMsg.Delta)
 	}
 
-	outputMsg := CommandOutputMsg{
-		ThreadID: "t-1",
-		ExecID:   "e-1",
-		Data:     "output\n",
-	}
-	if outputMsg.Data != "output\n" {
-		t.Errorf("expected output, got %s", outputMsg.Data)
+	completeMsg := TaskCompleteMsg{LastMessage: "done"}
+	if completeMsg.LastMessage != "done" {
+		t.Errorf("expected done, got %s", completeMsg.LastMessage)
 	}
 
-	finishedMsg := CommandFinishedMsg{
-		ThreadID: "t-1",
-		ExecID:   "e-1",
-		ExitCode: 0,
+	errorMsg := AppServerErrorMsg{Err: fmt.Errorf("test error")}
+	if errorMsg.Error() != "test error" {
+		t.Errorf("expected test error, got %s", errorMsg.Error())
 	}
-	if finishedMsg.ExitCode != 0 {
-		t.Errorf("expected 0, got %d", finishedMsg.ExitCode)
+
+	createdMsg := ThreadCreatedMsg{ThreadID: "t-1", Title: "Test"}
+	if createdMsg.ThreadID != "t-1" {
+		t.Errorf("expected t-1, got %s", createdMsg.ThreadID)
+	}
+}
+
+func TestPinUnpinMessages(t *testing.T) {
+	pinMsg := PinSessionMsg{ThreadID: "t-1"}
+	if pinMsg.ThreadID != "t-1" {
+		t.Errorf("expected t-1, got %s", pinMsg.ThreadID)
+	}
+
+	unpinMsg := UnpinSessionMsg{ThreadID: "t-2"}
+	if unpinMsg.ThreadID != "t-2" {
+		t.Errorf("expected t-2, got %s", unpinMsg.ThreadID)
+	}
+
+	focusMsg := FocusSessionPaneMsg{Index: 2}
+	if focusMsg.Index != 2 {
+		t.Errorf("expected 2, got %d", focusMsg.Index)
+	}
+
+	switchMsg := SwitchPaneFocusMsg{Pane: FocusPaneSession}
+	if switchMsg.Pane != FocusPaneSession {
+		t.Errorf("expected FocusPaneSession, got %d", switchMsg.Pane)
 	}
 }

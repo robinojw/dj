@@ -1,17 +1,23 @@
 package appserver
 
 const (
-	MethodThreadCreate      = "thread/create"
-	MethodThreadList        = "thread/list"
-	MethodThreadDelete      = "thread/delete"
-	MethodThreadSendMessage = "thread/sendMessage"
-	MethodCommandExec       = "command/exec"
+	EventSessionConfigured = "session_configured"
+	EventTaskStarted       = "task_started"
+	EventTaskComplete      = "task_complete"
+	EventAgentMessage      = "agent_message"
+	EventAgentMessageDelta = "agent_message_delta"
+	EventAgentReasoning    = "agent_reasoning"
+	EventAgentReasonDelta  = "agent_reasoning_delta"
+	EventTokenCount        = "token_count"
+	EventExecApproval      = "exec_command_request"
+	EventPatchApproval     = "patch_apply_request"
+	EventAgentReasonBreak  = "agent_reasoning_section_break"
 )
 
 const (
-	NotifyThreadStatusChanged  = "thread/status/changed"
-	NotifyThreadMessageCreated = "thread/message/created"
-	NotifyThreadMessageDelta   = "thread/message/delta"
-	NotifyCommandOutput        = "command/output"
-	NotifyCommandFinished      = "command/finished"
+	OpUserInput     = "user_input"
+	OpInterrupt     = "interrupt"
+	OpExecApproval  = "exec_approval"
+	OpPatchApproval = "patch_approval"
+	OpShutdown      = "shutdown"
 )

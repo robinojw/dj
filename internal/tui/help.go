@@ -33,13 +33,19 @@ type keybinding struct {
 var keybindings = []keybinding{
 	{"←/→", "Navigate cards horizontally"},
 	{"↑/↓", "Navigate cards vertically"},
-	{"Enter", "Open session pane"},
+	{"Enter", "Open + focus session"},
+	{"Space", "Toggle pin/unpin session"},
+	{"Tab", "Switch to session panel"},
 	{"Esc", "Back / close overlay"},
 	{"t", "Toggle tree view"},
 	{"n", "New thread"},
 	{"Ctrl+B", "Prefix key (tmux-style)"},
-	{"Ctrl+B m", "Open context menu (Menu)"},
-	{"?", "Toggle help (Help)"},
+	{"Ctrl+B m", "Open context menu"},
+	{"Ctrl+B ←/→", "Cycle session panes"},
+	{"Ctrl+B 1-9", "Jump to session pane"},
+	{"Ctrl+B x", "Unpin focused session"},
+	{"Ctrl+B z", "Toggle zoom session"},
+	{"?", "Toggle help"},
 	{"Ctrl+C", "Quit"},
 }
 
