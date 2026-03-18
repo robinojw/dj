@@ -1,39 +1,44 @@
 package appserver
 
-const (
-	ThreadStatusActive    = "active"
-	ThreadStatusIdle      = "idle"
-	ThreadStatusCompleted = "completed"
-	ThreadStatusError     = "error"
-)
-
-type ThreadCreateParams struct {
-	Instructions string `json:"instructions"`
+type SessionConfigured struct {
+	SessionID       string `json:"session_id"`
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoning_effort"`
+	HistoryLogID    int64  `json:"history_log_id"`
+	RolloutPath     string `json:"rollout_path"`
 }
 
-type ThreadCreateResult struct {
-	ThreadID string `json:"threadId"`
+type TaskStarted struct {
+	ModelContextWindow int `json:"model_context_window"`
 }
 
-type ThreadDeleteParams struct {
-	ThreadID string `json:"threadId"`
+type TaskComplete struct {
+	LastAgentMessage string `json:"last_agent_message"`
 }
 
-type ThreadListResult struct {
-	Threads []ThreadSummary `json:"threads"`
+type AgentMessage struct {
+	Message string `json:"message"`
 }
 
-type ThreadSummary struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Title  string `json:"title"`
+type AgentDelta struct {
+	Delta string `json:"delta"`
 }
 
-type ThreadSendMessageParams struct {
-	ThreadID string `json:"threadId"`
-	Content  string `json:"content"`
+type UserInputOp struct {
+	Type  string      `json:"type"`
+	Items []InputItem `json:"items"`
 }
 
-type ThreadSendMessageResult struct {
-	MessageID string `json:"messageId"`
+type InputItem struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+}
+
+type ExecCommandRequest struct {
+	Command string `json:"command"`
+	Cwd     string `json:"cwd,omitempty"`
+}
+
+type PatchApplyRequest struct {
+	Patch string `json:"patch"`
 }

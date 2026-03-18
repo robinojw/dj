@@ -1,34 +1,33 @@
 package tui
 
-type ThreadStatusMsg struct {
-	ThreadID string
-	Status   string
-	Title    string
+type SessionConfiguredMsg struct {
+	SessionID string
+	Model     string
 }
 
-type ThreadMessageMsg struct {
-	ThreadID  string
-	MessageID string
-	Role      string
-	Content   string
+type TaskStartedMsg struct{}
+
+type TaskCompleteMsg struct {
+	LastMessage string
 }
 
-type ThreadDeltaMsg struct {
-	ThreadID  string
-	MessageID string
-	Delta     string
+type AgentDeltaMsg struct {
+	Delta string
 }
 
-type CommandOutputMsg struct {
-	ThreadID string
-	ExecID   string
-	Data     string
+type AgentMessageCompletedMsg struct {
+	Message string
 }
 
-type CommandFinishedMsg struct {
-	ThreadID string
-	ExecID   string
-	ExitCode int
+type ExecApprovalRequestMsg struct {
+	EventID string
+	Command string
+	Cwd     string
+}
+
+type PatchApprovalRequestMsg struct {
+	EventID string
+	Patch   string
 }
 
 type ThreadCreatedMsg struct {
@@ -40,9 +39,32 @@ type ThreadDeletedMsg struct {
 	ThreadID string
 }
 
-type AppServerConnectedMsg struct {
-	ServerName    string
-	ServerVersion string
+type PTYOutputMsg struct {
+	ThreadID string
+	Exited   bool
+}
+
+type FocusPane int
+
+const (
+	FocusPaneCanvas  FocusPane = iota
+	FocusPaneSession
+)
+
+type PinSessionMsg struct {
+	ThreadID string
+}
+
+type UnpinSessionMsg struct {
+	ThreadID string
+}
+
+type FocusSessionPaneMsg struct {
+	Index int
+}
+
+type SwitchPaneFocusMsg struct {
+	Pane FocusPane
 }
 
 type AppServerErrorMsg struct {

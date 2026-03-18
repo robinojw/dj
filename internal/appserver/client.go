@@ -11,7 +11,9 @@ import (
 	"sync/atomic"
 )
 
-// Client manages a child app-server process and bidirectional JSON-RPC communication.
+const scannerBufferSize = 1024 * 1024
+
+// Client manages a child codex proto process and bidirectional communication.
 type Client struct {
 	command string
 	args    []string
@@ -19,29 +21,18 @@ type Client struct {
 	cmd     *exec.Cmd
 	stdin   io.WriteCloser
 	stdout  io.ReadCloser
+	stderr  io.ReadCloser
 	scanner *bufio.Scanner
 
-	mu      sync.Mutex // protects writes to stdin
+	mu      sync.Mutex
 	nextID  atomic.Int64
-	pending sync.Map // id → chan *Message
-
 	running atomic.Bool
 
-	// OnNotification is called for each server notification (no id).
-	// Set this before calling Start.
-	OnNotification func(method string, params json.RawMessage)
-
-	// OnServerRequest is called for server-to-client requests (has id).
-	// Set this before calling Start.
-	OnServerRequest func(id int, method string, params json.RawMessage)
-
-	// Router dispatches typed notifications by method name.
-	// Falls back to OnNotification for unregistered methods.
-	Router *NotificationRouter
+	OnEvent  func(event ProtoEvent)
+	OnStderr func(line string)
 }
 
 // NewClient creates a client that will spawn the given command.
-// Additional arguments can be passed after the command.
 func NewClient(command string, args ...string) *Client {
 	return &Client{
 		command: command,
@@ -49,7 +40,7 @@ func NewClient(command string, args ...string) *Client {
 	}
 }
 
-// Start spawns the child process and begins reading stdout.
+// Start spawns the child process.
 func (c *Client) Start(ctx context.Context) error {
 	c.cmd = exec.CommandContext(ctx, c.command, c.args...)
 
@@ -64,14 +55,20 @@ func (c *Client) Start(ctx context.Context) error {
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
 
+	c.stderr, err = c.cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("stderr pipe: %w", err)
+	}
+
 	c.scanner = bufio.NewScanner(c.stdout)
-	c.scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB max line
+	c.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
 
 	if err := c.cmd.Start(); err != nil {
 		return fmt.Errorf("start process: %w", err)
 	}
 
 	c.running.Store(true)
+	go c.drainStderr()
 	return nil
 }
 
@@ -87,7 +84,6 @@ func (c *Client) Stop() error {
 	}
 	c.running.Store(false)
 
-	// Close stdin to signal EOF to the child
 	if c.stdin != nil {
 		c.stdin.Close()
 	}
@@ -98,11 +94,24 @@ func (c *Client) Stop() error {
 	return nil
 }
 
-// Send writes a JSON-RPC request to the child's stdin as a JSONL line.
-func (c *Client) Send(req *Request) error {
-	data, err := json.Marshal(req)
+func (c *Client) drainStderr() {
+	if c.stderr == nil {
+		return
+	}
+	scanner := bufio.NewScanner(c.stderr)
+	scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
+	for scanner.Scan() {
+		if c.OnStderr != nil {
+			c.OnStderr(scanner.Text())
+		}
+	}
+}
+
+// Send writes a ProtoSubmission to the child's stdin as a JSONL line.
+func (c *Client) Send(sub *ProtoSubmission) error {
+	data, err := json.Marshal(sub)
 	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
+		return fmt.Errorf("marshal submission: %w", err)
 	}
 
 	c.mu.Lock()
@@ -113,138 +122,56 @@ func (c *Client) Send(req *Request) error {
 	return err
 }
 
-// ReadLoop reads JSONL from stdout and dispatches each message to the callback.
-// It blocks until the scanner is exhausted (stdout closed) or an error occurs.
-func (c *Client) ReadLoop(handler func(Message)) {
+// NextID returns a unique string ID for submissions.
+func (c *Client) NextID() string {
+	return fmt.Sprintf("dj-%d", c.nextID.Add(1))
+}
+
+// ReadLoop reads JSONL events from stdout and dispatches each to the handler.
+func (c *Client) ReadLoop(handler func(ProtoEvent)) {
 	for c.scanner.Scan() {
 		line := c.scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
 
-		var msg Message
-		if err := json.Unmarshal(line, &msg); err != nil {
-			continue // skip malformed lines
+		var event ProtoEvent
+		if err := json.Unmarshal(line, &event); err != nil {
+			continue
 		}
 
-		handler(msg)
+		handler(event)
 	}
 }
 
-// Call sends a request and blocks until the response with the matching ID arrives.
-func (c *Client) Call(ctx context.Context, method string, params json.RawMessage) (*Message, error) {
-	id := int(c.nextID.Add(1))
-
-	ch := make(chan *Message, 1)
-	c.pending.Store(id, ch)
-	defer c.pending.Delete(id)
-
-	req := &Request{
-		JSONRPC: "2.0",
-		ID:      &id,
-		Method:  method,
-		Params:  params,
-	}
-
-	if err := c.Send(req); err != nil {
-		return nil, err
-	}
-
-	select {
-	case msg := <-ch:
-		return msg, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-// Dispatch routes an incoming message to the appropriate handler:
-// - Messages with an ID matching a pending request -> resolve the pending Call
-// - Messages with an ID but no pending request -> server-to-client request (OnServerRequest)
-// - Messages without an ID -> notification (OnNotification)
-func (c *Client) Dispatch(msg Message) {
-	if msg.ID != nil {
-		// Check if this resolves a pending call
-		if ch, ok := c.pending.LoadAndDelete(*msg.ID); ok {
-			ch.(chan *Message) <- &msg
-			return
-		}
-
-		// Server-to-client request
-		if c.OnServerRequest != nil && msg.Method != "" {
-			c.OnServerRequest(*msg.ID, msg.Method, msg.Params)
-		}
-		return
-	}
-
-	if msg.Method == "" {
-		return
-	}
-
-	if c.Router != nil {
-		c.Router.Handle(msg.Method, msg.Params)
-	}
-
-	if c.OnNotification != nil {
-		c.OnNotification(msg.Method, msg.Params)
-	}
-}
-
-// InitializeParams is sent as the first request to the app-server.
-type InitializeParams struct {
-	ClientInfo ClientInfo `json:"clientInfo"`
-}
-
-// ClientInfo identifies this client to the app-server.
-type ClientInfo struct {
-	Name    string `json:"name"`
-	Title   string `json:"title"`
-	Version string `json:"version"`
-}
-
-// ServerCapabilities is the result of the initialize request.
-type ServerCapabilities struct {
-	ServerInfo struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-	} `json:"serverInfo"`
-}
-
-// Initialize performs the required handshake with the app-server.
-// Sends initialize request, receives capabilities, then sends initialized notification.
-func (c *Client) Initialize(ctx context.Context) (*ServerCapabilities, error) {
-	params, _ := json.Marshal(InitializeParams{
-		ClientInfo: ClientInfo{
-			Name:    "dj",
-			Title:   "DJ — Codex TUI Visualizer",
-			Version: "0.1.0",
+// SendUserInput sends a text message to the codex session.
+func (c *Client) SendUserInput(text string) (string, error) {
+	id := c.NextID()
+	op := UserInputOp{
+		Type: OpUserInput,
+		Items: []InputItem{
+			{Type: "text", Text: text},
 		},
-	})
-
-	resp, err := c.Call(ctx, "initialize", params)
-	if err != nil {
-		return nil, fmt.Errorf("initialize request: %w", err)
 	}
-
-	if resp.Error != nil {
-		return nil, fmt.Errorf("initialize error: %s", resp.Error.Message)
+	opData, _ := json.Marshal(op)
+	sub := &ProtoSubmission{
+		ID: id,
+		Op: opData,
 	}
+	return id, c.Send(sub)
+}
 
-	var caps ServerCapabilities
-	if resp.Result != nil {
-		if err := json.Unmarshal(resp.Result, &caps); err != nil {
-			return nil, fmt.Errorf("unmarshal capabilities: %w", err)
-		}
-	}
+// SendInterrupt sends an interrupt to cancel the current task.
+func (c *Client) SendInterrupt() error {
+	id := c.NextID()
+	op := map[string]string{"type": OpInterrupt}
+	opData, _ := json.Marshal(op)
+	return c.Send(&ProtoSubmission{ID: id, Op: opData})
+}
 
-	// Send the initialized notification (no id, no response expected)
-	notif := &Request{
-		JSONRPC: "2.0",
-		Method:  "initialized",
-	}
-	if err := c.Send(notif); err != nil {
-		return nil, fmt.Errorf("send initialized: %w", err)
-	}
-
-	return &caps, nil
+// SendApproval responds to an exec or patch approval request.
+func (c *Client) SendApproval(eventID string, opType string, approved bool) error {
+	op := map[string]any{"type": opType, "approved": approved}
+	opData, _ := json.Marshal(op)
+	return c.Send(&ProtoSubmission{ID: eventID, Op: opData})
 }

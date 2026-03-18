@@ -2,41 +2,21 @@ package appserver
 
 import "encoding/json"
 
-// Message is the generic JSON-RPC 2.0 envelope.
-// It covers requests (id + method), responses (id + result/error),
-// and notifications (method, no id).
-type Message struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      *int            `json:"id,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Params  json.RawMessage `json:"params,omitempty"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *RPCError       `json:"error,omitempty"`
+// ProtoEvent is an incoming event from the codex proto stream.
+// Format: {"id":"<correlation-id>","msg":{"type":"<event-type>",...}}
+type ProtoEvent struct {
+	ID  string          `json:"id"`
+	Msg json.RawMessage `json:"msg"`
 }
 
-// Request is an outbound JSON-RPC request.
-type Request struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      *int            `json:"id,omitempty"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
+// EventHeader extracts just the type field from a ProtoEvent.Msg payload.
+type EventHeader struct {
+	Type string `json:"type"`
 }
 
-// Response is an inbound JSON-RPC response.
-type Response struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      *int            `json:"id,omitempty"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *RPCError       `json:"error,omitempty"`
-}
-
-// RPCError is the JSON-RPC error object.
-type RPCError struct {
-	Code    int             `json:"code"`
-	Message string          `json:"message"`
-	Data    json.RawMessage `json:"data,omitempty"`
-}
-
-func (e *RPCError) Error() string {
-	return e.Message
+// ProtoSubmission is an outgoing operation sent to codex proto.
+// Format: {"id":"<correlation-id>","op":{"type":"<op-type>",...}}
+type ProtoSubmission struct {
+	ID string          `json:"id"`
+	Op json.RawMessage `json:"op"`
 }

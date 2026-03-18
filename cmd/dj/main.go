@@ -42,11 +42,18 @@ func runApp(cmd *cobra.Command, args []string) error {
 	defer client.Stop()
 
 	store := state.NewThreadStore()
-	app := tui.NewAppModel(store, tui.WithClient(client))
+	app := tui.NewAppModel(
+		store,
+		tui.WithClient(client),
+		tui.WithInteractiveCommand(cfg.Interactive.Command, cfg.Interactive.Args...),
+	)
 
 	program := tea.NewProgram(app, tea.WithAltScreen())
-	app.SetProgram(program)
+	finalModel, err := program.Run()
 
-	_, err = program.Run()
+	if finalApp, ok := finalModel.(tui.AppModel); ok {
+		finalApp.StopAllPTYSessions()
+	}
+
 	return err
 }

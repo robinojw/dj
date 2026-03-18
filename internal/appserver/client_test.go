@@ -10,8 +10,6 @@ import (
 )
 
 func TestClientStartStop(t *testing.T) {
-	// Use 'cat' as a mock app-server: it reads stdin and echoes to stdout.
-	// This verifies process lifecycle without a real codex binary.
 	client := NewClient("cat")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -34,8 +32,7 @@ func TestClientStartStop(t *testing.T) {
 	}
 }
 
-func TestClientSendAndRead(t *testing.T) {
-	// 'cat' echoes back what we write — simulates a response
+func TestClientSendAndReadLoop(t *testing.T) {
 	client := NewClient("cat")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -46,36 +43,45 @@ func TestClientSendAndRead(t *testing.T) {
 	}
 	defer client.Stop()
 
-	// Start the read loop
-	msgs := make(chan Message, 10)
-	go client.ReadLoop(func(msg Message) {
-		msgs <- msg
+	events := make(chan ProtoEvent, 10)
+	go client.ReadLoop(func(event ProtoEvent) {
+		events <- event
 	})
 
-	// Send a JSON-RPC request — cat will echo it back
-	req := &Request{
-		JSONRPC: "2.0",
-		ID:      intPtr(1),
-		Method:  "test/echo",
-		Params:  json.RawMessage(`{"hello":"world"}`),
+	sub := &ProtoSubmission{
+		ID: "test-1",
+		Op: json.RawMessage(`{"type":"user_input"}`),
 	}
-	if err := client.Send(req); err != nil {
+	if err := client.Send(sub); err != nil {
 		t.Fatalf("Send failed: %v", err)
 	}
 
 	select {
-	case msg := <-msgs:
-		if msg.Method != "test/echo" {
-			t.Errorf("expected method test/echo, got %s", msg.Method)
+	case event := <-events:
+		if event.ID != "test-1" {
+			t.Errorf("expected id test-1, got %s", event.ID)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("timeout waiting for message")
+		t.Fatal("timeout waiting for event")
 	}
 }
 
-func TestClientCall(t *testing.T) {
-	// Use 'cat' — it echoes the request back as-is.
-	// The Call method will see the echoed message has a matching ID and treat it as a response.
+func TestClientNextID(t *testing.T) {
+	client := NewClient("echo")
+	first := client.NextID()
+	second := client.NextID()
+	if first == second {
+		t.Error("expected unique IDs")
+	}
+	if first != "dj-1" {
+		t.Errorf("expected dj-1, got %s", first)
+	}
+	if second != "dj-2" {
+		t.Errorf("expected dj-2, got %s", second)
+	}
+}
+
+func TestClientSendUserInput(t *testing.T) {
 	client := NewClient("cat")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -86,97 +92,87 @@ func TestClientCall(t *testing.T) {
 	}
 	defer client.Stop()
 
-	// Start dispatching
-	go client.ReadLoop(client.Dispatch)
+	events := make(chan ProtoEvent, 10)
+	go client.ReadLoop(func(event ProtoEvent) {
+		events <- event
+	})
 
-	// Call — cat echoes back the request, which has an id, so it resolves as a response
-	resp, err := client.Call(ctx, "test/method", json.RawMessage(`{"key":"val"}`))
+	id, err := client.SendUserInput("Hello")
 	if err != nil {
-		t.Fatalf("Call failed: %v", err)
+		t.Fatalf("SendUserInput failed: %v", err)
+	}
+	if id == "" {
+		t.Error("expected non-empty id")
 	}
 
-	// The echo will have params (not result), but the call resolved because ID matched
-	if resp == nil {
-		t.Fatal("expected non-nil response")
+	select {
+	case event := <-events:
+		if event.ID != id {
+			t.Errorf("expected id %s, got %s", id, event.ID)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for event")
 	}
 }
 
-func TestInitializeHandshake(t *testing.T) {
-	// Set up bidirectional pipes to simulate app-server
-	// client writes -> serverRead, serverWrite -> clientRead
+func TestReadLoopParsesProtoEvents(t *testing.T) {
 	clientRead, serverWrite := io.Pipe()
-	serverRead, clientWrite := io.Pipe()
 
-	// Mock server: reads initialize request, writes back capabilities response,
-	// then reads the initialized notification
-	go func() {
-		scanner := bufio.NewScanner(serverRead)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-
-		// Read initialize request
-		if !scanner.Scan() {
-			t.Error("mock server: failed to read initialize request")
-			return
-		}
-		var req Message
-		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-			t.Errorf("mock server: unmarshal request: %v", err)
-			return
-		}
-		if req.Method != "initialize" {
-			t.Errorf("mock server: expected method initialize, got %s", req.Method)
-			return
-		}
-
-		// Write capabilities response
-		resp := Message{
-			JSONRPC: "2.0",
-			ID:      req.ID,
-			Result:  json.RawMessage(`{"serverInfo":{"name":"codex-app-server","version":"0.1.0"}}`),
-		}
-		data, _ := json.Marshal(resp)
-		data = append(data, '\n')
-		serverWrite.Write(data)
-
-		// Read initialized notification
-		if !scanner.Scan() {
-			t.Error("mock server: failed to read initialized notification")
-			return
-		}
-		var notif Message
-		if err := json.Unmarshal(scanner.Bytes(), &notif); err != nil {
-			t.Errorf("mock server: unmarshal notification: %v", err)
-			return
-		}
-		if notif.Method != "initialized" {
-			t.Errorf("mock server: expected method initialized, got %s", notif.Method)
-		}
-	}()
-
-	// Set up client with our pipes instead of a real process
 	client := &Client{}
-	client.stdin = clientWrite
 	client.stdout = clientRead
 	client.scanner = bufio.NewScanner(clientRead)
-	client.scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	client.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
 	client.running.Store(true)
 
-	go client.ReadLoop(client.Dispatch)
+	events := make(chan ProtoEvent, 10)
+	go client.ReadLoop(func(event ProtoEvent) {
+		events <- event
+	})
+
+	eventJSON := `{"id":"","msg":{"type":"session_configured","session_id":"s-1","model":"o4-mini"}}` + "\n"
+	serverWrite.Write([]byte(eventJSON))
+
+	select {
+	case event := <-events:
+		var header EventHeader
+		json.Unmarshal(event.Msg, &header)
+		if header.Type != EventSessionConfigured {
+			t.Errorf("expected session_configured, got %s", header.Type)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for event")
+	}
+
+	serverWrite.Close()
+}
+
+func TestClientSendApproval(t *testing.T) {
+	client := NewClient("cat")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	caps, err := client.Initialize(ctx)
+	if err := client.Start(ctx); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer client.Stop()
+
+	events := make(chan ProtoEvent, 10)
+	go client.ReadLoop(func(event ProtoEvent) {
+		events <- event
+	})
+
+	err := client.SendApproval("req-1", OpExecApproval, true)
 	if err != nil {
-		t.Fatalf("Initialize failed: %v", err)
+		t.Fatalf("SendApproval failed: %v", err)
 	}
-	if caps == nil {
-		t.Fatal("expected non-nil capabilities")
-	}
-	if caps.ServerInfo.Name != "codex-app-server" {
-		t.Errorf("expected server name codex-app-server, got %s", caps.ServerInfo.Name)
-	}
-	if caps.ServerInfo.Version != "0.1.0" {
-		t.Errorf("expected server version 0.1.0, got %s", caps.ServerInfo.Version)
+
+	select {
+	case event := <-events:
+		if event.ID != "req-1" {
+			t.Errorf("expected id req-1, got %s", event.ID)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for event")
 	}
 }

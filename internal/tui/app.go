@@ -1,51 +1,55 @@
 package tui
 
 import (
-	"context"
-
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/robinojw/dj/internal/appserver"
 	"github.com/robinojw/dj/internal/state"
 )
 
 const (
-	FocusCanvas = iota
-	FocusTree
-	FocusSession
+	CanvasModeGrid = iota
+	CanvasModeTree
 )
 
-var titleStyle = lipgloss.NewStyle().
-	Bold(true).
-	Foreground(lipgloss.Color("39")).
-	MarginBottom(1)
+const eventChannelSize = 64
 
 type AppModel struct {
-	store       *state.ThreadStore
-	client      *appserver.Client
-	program     *tea.Program
-	statusBar   *StatusBar
-	canvas      CanvasModel
-	tree        TreeModel
-	session     *SessionModel
-	prefix      *PrefixHandler
-	menu        MenuModel
-	help        HelpModel
-	menuVisible bool
-	helpVisible bool
-	focus       int
-	width       int
-	height      int
+	store            *state.ThreadStore
+	client           *appserver.Client
+	statusBar        *StatusBar
+	canvas           CanvasModel
+	tree             TreeModel
+	prefix           *PrefixHandler
+	menu             MenuModel
+	help             HelpModel
+	menuVisible      bool
+	helpVisible      bool
+	focusPane        FocusPane
+	canvasMode       int
+	width            int
+	height           int
+	sessionID        string
+	currentMessageID string
+	events           chan appserver.ProtoEvent
+	ptySessions      map[string]*PTYSession
+	ptyEvents        chan PTYOutputMsg
+	interactiveCmd   string
+	interactiveArgs  []string
+	sessionPanel     SessionPanelModel
 }
 
 func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 	app := AppModel{
-		store:     store,
-		statusBar: NewStatusBar(),
-		canvas:    NewCanvasModel(store),
-		tree:      NewTreeModel(store),
-		prefix:    NewPrefixHandler(),
-		help:      NewHelpModel(),
+		store:        store,
+		statusBar:    NewStatusBar(),
+		canvas:       NewCanvasModel(store),
+		tree:         NewTreeModel(store),
+		prefix:       NewPrefixHandler(),
+		help:         NewHelpModel(),
+		events:       make(chan appserver.ProtoEvent, eventChannelSize),
+		ptySessions:  make(map[string]*PTYSession),
+		ptyEvents:    make(chan PTYOutputMsg, eventChannelSize),
+		sessionPanel: NewSessionPanelModel(),
 	}
 	for _, opt := range opts {
 		opt(&app)
@@ -53,23 +57,27 @@ func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 	return app
 }
 
-// AppOption configures optional AppModel fields.
 type AppOption func(*AppModel)
 
-// WithClient sets the app-server client.
 func WithClient(client *appserver.Client) AppOption {
 	return func(a *AppModel) {
 		a.client = client
 	}
 }
 
-// SetProgram stores the tea.Program for sending async messages.
-func (app *AppModel) SetProgram(p *tea.Program) {
-	app.program = p
+func WithInteractiveCommand(command string, args ...string) AppOption {
+	return func(a *AppModel) {
+		a.interactiveCmd = command
+		a.interactiveArgs = args
+	}
 }
 
-func (app AppModel) Focus() int {
-	return app.focus
+func (app AppModel) FocusPane() FocusPane {
+	return app.focusPane
+}
+
+func (app AppModel) CanvasMode() int {
+	return app.canvasMode
 }
 
 func (app AppModel) HelpVisible() bool {
@@ -80,31 +88,11 @@ func (app AppModel) Init() tea.Cmd {
 	if app.client == nil {
 		return nil
 	}
-
-	return func() tea.Msg {
-		ctx := context.Background()
-		if err := app.client.Start(ctx); err != nil {
-			return AppServerErrorMsg{Err: err}
-		}
-
-		router := appserver.NewNotificationRouter()
-		app.client.Router = router
-		if app.program != nil {
-			WireEventBridge(router, app.program)
-		}
-
-		go app.client.ReadLoop(app.client.Dispatch)
-
-		caps, err := app.client.Initialize(ctx)
-		if err != nil {
-			return AppServerErrorMsg{Err: err}
-		}
-
-		return AppServerConnectedMsg{
-			ServerName:    caps.ServerInfo.Name,
-			ServerVersion: caps.ServerInfo.Version,
-		}
-	}
+	return tea.Batch(
+		app.connectClient(),
+		app.listenForEvents(),
+		app.listenForPTYEvents(),
+	)
 }
 
 func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -115,13 +103,25 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		app.width = msg.Width
 		app.height = msg.Height
 		app.statusBar.SetWidth(msg.Width)
-		if app.session != nil {
-			app.session.SetSize(msg.Width, msg.Height)
-		}
-		return app, nil
-	case AppServerConnectedMsg:
-		app.statusBar.SetConnected(true)
-		return app, nil
+		return app, app.rebalancePTYSizes()
+	case protoEventMsg:
+		return app.handleProtoEvent(msg.Event)
+	case PTYOutputMsg:
+		return app.handlePTYOutput(msg)
+	case SessionConfiguredMsg:
+		return app.handleSessionConfigured(msg)
+	case TaskStartedMsg:
+		return app.handleTaskStarted()
+	case AgentDeltaMsg:
+		return app.handleAgentDelta(msg)
+	case AgentMessageCompletedMsg:
+		return app.handleAgentMessageCompleted()
+	case TaskCompleteMsg:
+		return app.handleTaskComplete()
+	case ExecApprovalRequestMsg:
+		return app.handleExecApproval(msg)
+	case PatchApprovalRequestMsg:
+		return app.handlePatchApproval(msg)
 	case AppServerErrorMsg:
 		app.statusBar.SetError(msg.Error())
 		return app, nil
@@ -129,15 +129,6 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		app.store.Add(msg.ThreadID, msg.Title)
 		app.statusBar.SetThreadCount(len(app.store.All()))
 		return app, nil
-	case ThreadStatusMsg:
-		app.store.UpdateStatus(msg.ThreadID, msg.Status, msg.Title)
-		return app, nil
-	case ThreadMessageMsg:
-		return app.handleThreadMessage(msg)
-	case ThreadDeltaMsg:
-		return app.handleThreadDelta(msg)
-	case CommandOutputMsg:
-		return app.handleCommandOutput(msg)
 	}
 	return app, nil
 }
@@ -161,7 +152,7 @@ func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return app, nil
 	}
 
-	if app.focus == FocusSession {
+	if app.focusPane == FocusPaneSession {
 		return app.handleSessionKey(msg)
 	}
 
@@ -170,6 +161,8 @@ func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return app, tea.Quit
 	case tea.KeyEnter:
 		return app.openSession()
+	case tea.KeyTab:
+		return app.switchToSessionPanel()
 	case tea.KeyRunes:
 		return app.handleRune(msg)
 	default:
@@ -180,33 +173,27 @@ func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "t":
-		app.toggleFocus()
+		app.toggleCanvasMode()
 	case "n":
 		return app, app.createThread()
 	case "?":
 		app.helpVisible = !app.helpVisible
+	case " ":
+		return app.togglePin()
 	}
 	return app, nil
 }
 
 func (app AppModel) createThread() tea.Cmd {
-	return func() tea.Msg {
-		if app.client == nil {
+	if app.client == nil {
+		return func() tea.Msg {
 			return ThreadCreatedMsg{
 				ThreadID: "local",
 				Title:    "New Thread",
 			}
 		}
-		ctx := context.Background()
-		result, err := app.client.CreateThread(ctx, "New Thread")
-		if err != nil {
-			return AppServerErrorMsg{Err: err}
-		}
-		return ThreadCreatedMsg{
-			ThreadID: result.ThreadID,
-			Title:    "New Thread",
-		}
 	}
+	return nil
 }
 
 func (app AppModel) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -218,16 +205,25 @@ func (app AppModel) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return app, nil
 }
 
-func (app *AppModel) toggleFocus() {
-	if app.focus == FocusCanvas {
-		app.focus = FocusTree
+func (app *AppModel) toggleCanvasMode() {
+	if app.canvasMode == CanvasModeGrid {
+		app.canvasMode = CanvasModeTree
 		return
 	}
-	app.focus = FocusCanvas
+	app.canvasMode = CanvasModeGrid
+}
+
+func (app AppModel) switchToSessionPanel() (tea.Model, tea.Cmd) {
+	hasPinned := len(app.sessionPanel.PinnedSessions()) > 0
+	if !hasPinned {
+		return app, nil
+	}
+	app.focusPane = FocusPaneSession
+	return app, nil
 }
 
 func (app AppModel) handleArrow(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if app.focus == FocusTree {
+	if app.canvasMode == CanvasModeTree {
 		app.handleTreeArrow(msg)
 		return app, nil
 	}
@@ -246,7 +242,7 @@ func (app *AppModel) handleTreeArrow(msg tea.KeyMsg) {
 
 func (app *AppModel) handleCanvasArrow(msg tea.KeyMsg) {
 	switch msg.Type {
-	case tea.KeyRight, tea.KeyTab:
+	case tea.KeyRight:
 		app.canvas.MoveRight()
 	case tea.KeyLeft, tea.KeyShiftTab:
 		app.canvas.MoveLeft()
@@ -255,126 +251,4 @@ func (app *AppModel) handleCanvasArrow(msg tea.KeyMsg) {
 	case tea.KeyUp:
 		app.canvas.MoveUp()
 	}
-}
-
-func (app AppModel) handleSessionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyCtrlC:
-		return app, tea.Quit
-	case tea.KeyEsc:
-		app.closeSession()
-		return app, nil
-	case tea.KeyUp, tea.KeyDown, tea.KeyPgUp, tea.KeyPgDown:
-		app.scrollSession(msg)
-		return app, nil
-	}
-	return app, nil
-}
-
-func (app AppModel) openSession() (tea.Model, tea.Cmd) {
-	threadID := app.canvas.SelectedThreadID()
-	if threadID == "" {
-		return app, nil
-	}
-
-	thread, exists := app.store.Get(threadID)
-	if !exists {
-		return app, nil
-	}
-
-	session := NewSessionModel(thread)
-	session.SetSize(app.width, app.height)
-	app.session = &session
-	app.focus = FocusSession
-	return app, nil
-}
-
-func (app *AppModel) closeSession() {
-	app.session = nil
-	app.focus = FocusCanvas
-}
-
-func (app *AppModel) scrollSession(msg tea.KeyMsg) {
-	if app.session == nil {
-		return
-	}
-
-	switch msg.Type {
-	case tea.KeyUp:
-		app.session.viewport.ScrollUp(1)
-	case tea.KeyDown:
-		app.session.viewport.ScrollDown(1)
-	case tea.KeyPgUp:
-		app.session.viewport.HalfPageUp()
-	case tea.KeyPgDown:
-		app.session.viewport.HalfPageDown()
-	}
-}
-
-func (app *AppModel) refreshSession() {
-	if app.session == nil {
-		return
-	}
-	app.session.Refresh()
-}
-
-func (app AppModel) handleThreadMessage(msg ThreadMessageMsg) (tea.Model, tea.Cmd) {
-	thread, exists := app.store.Get(msg.ThreadID)
-	if !exists {
-		return app, nil
-	}
-	thread.AppendMessage(state.ChatMessage{
-		ID:      msg.MessageID,
-		Role:    msg.Role,
-		Content: msg.Content,
-	})
-	app.refreshSession()
-	return app, nil
-}
-
-func (app AppModel) handleThreadDelta(msg ThreadDeltaMsg) (tea.Model, tea.Cmd) {
-	thread, exists := app.store.Get(msg.ThreadID)
-	if !exists {
-		return app, nil
-	}
-	thread.AppendDelta(msg.MessageID, msg.Delta)
-	app.refreshSession()
-	return app, nil
-}
-
-func (app AppModel) handleCommandOutput(msg CommandOutputMsg) (tea.Model, tea.Cmd) {
-	thread, exists := app.store.Get(msg.ThreadID)
-	if !exists {
-		return app, nil
-	}
-	thread.AppendOutput(msg.ExecID, msg.Data)
-	app.refreshSession()
-	return app, nil
-}
-
-func (app AppModel) View() string {
-	title := titleStyle.Render("DJ — Codex TUI Visualizer")
-	status := app.statusBar.View()
-
-	if app.helpVisible {
-		return title + "\n" + app.help.View() + "\n" + status
-	}
-
-	if app.menuVisible {
-		return title + "\n" + app.menu.View() + "\n" + status
-	}
-
-	if app.focus == FocusSession && app.session != nil {
-		return title + "\n" + app.session.View() + "\n" + status
-	}
-
-	canvas := app.canvas.View()
-
-	if app.focus == FocusTree {
-		treeView := app.tree.View()
-		body := lipgloss.JoinHorizontal(lipgloss.Top, treeView+"  ", canvas)
-		return title + "\n" + body + "\n" + status
-	}
-
-	return title + "\n" + canvas + "\n" + status
 }

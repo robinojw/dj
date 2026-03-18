@@ -10,8 +10,9 @@ const (
 )
 
 type PrefixHandler struct {
-	active bool
-	action rune
+	active  bool
+	action  rune
+	keyType tea.KeyType
 }
 
 func NewPrefixHandler() *PrefixHandler {
@@ -24,6 +25,10 @@ func (handler *PrefixHandler) Active() bool {
 
 func (handler *PrefixHandler) Action() rune {
 	return handler.action
+}
+
+func (handler *PrefixHandler) KeyType() tea.KeyType {
+	return handler.keyType
 }
 
 func (handler *PrefixHandler) HandleKey(msg tea.KeyMsg) int {
@@ -44,6 +49,15 @@ func (handler *PrefixHandler) HandleKey(msg tea.KeyMsg) int {
 	hasRunes := msg.Type == tea.KeyRunes && len(msg.Runes) > 0
 	if hasRunes {
 		handler.action = msg.Runes[0]
+		handler.keyType = msg.Type
+		return PrefixComplete
+	}
+
+	isArrow := msg.Type == tea.KeyLeft || msg.Type == tea.KeyRight ||
+		msg.Type == tea.KeyUp || msg.Type == tea.KeyDown
+	if isArrow {
+		handler.action = 0
+		handler.keyType = msg.Type
 		return PrefixComplete
 	}
 
