@@ -30,6 +30,14 @@ func (canvas *CanvasModel) SelectedThreadID() string {
 	return threads[canvas.selected].ID
 }
 
+func (canvas *CanvasModel) SetSelected(index int) {
+	threads := canvas.store.All()
+	isValidIndex := index >= 0 && index < len(threads)
+	if isValidIndex {
+		canvas.selected = index
+	}
+}
+
 func (canvas *CanvasModel) MoveRight() {
 	threads := canvas.store.All()
 	if canvas.selected < len(threads)-1 {

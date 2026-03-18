@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/internal/appserver"
 	"github.com/robinojw/dj/internal/state"
@@ -33,6 +35,7 @@ type AppModel struct {
 	events           chan appserver.ProtoEvent
 	ptySessions      map[string]*PTYSession
 	ptyEvents        chan PTYOutputMsg
+	sessionCounter   *int
 	interactiveCmd   string
 	interactiveArgs  []string
 	sessionPanel     SessionPanelModel
@@ -40,16 +43,17 @@ type AppModel struct {
 
 func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 	app := AppModel{
-		store:        store,
-		statusBar:    NewStatusBar(),
-		canvas:       NewCanvasModel(store),
-		tree:         NewTreeModel(store),
-		prefix:       NewPrefixHandler(),
-		help:         NewHelpModel(),
-		events:       make(chan appserver.ProtoEvent, eventChannelSize),
-		ptySessions:  make(map[string]*PTYSession),
-		ptyEvents:    make(chan PTYOutputMsg, eventChannelSize),
-		sessionPanel: NewSessionPanelModel(),
+		store:          store,
+		statusBar:      NewStatusBar(),
+		canvas:         NewCanvasModel(store),
+		tree:           NewTreeModel(store),
+		prefix:         NewPrefixHandler(),
+		help:           NewHelpModel(),
+		events:         make(chan appserver.ProtoEvent, eventChannelSize),
+		ptySessions:    make(map[string]*PTYSession),
+		ptyEvents:      make(chan PTYOutputMsg, eventChannelSize),
+		sessionCounter: new(int),
+		sessionPanel:   NewSessionPanelModel(),
 	}
 	for _, opt := range opts {
 		opt(&app)
@@ -128,7 +132,8 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ThreadCreatedMsg:
 		app.store.Add(msg.ThreadID, msg.Title)
 		app.statusBar.SetThreadCount(len(app.store.All()))
-		return app, nil
+		app.canvas.SetSelected(len(app.store.All()) - 1)
+		return app.openSession()
 	}
 	return app, nil
 }
@@ -185,15 +190,14 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (app AppModel) createThread() tea.Cmd {
-	if app.client == nil {
-		return func() tea.Msg {
-			return ThreadCreatedMsg{
-				ThreadID: "local",
-				Title:    "New Thread",
-			}
+	*app.sessionCounter++
+	counter := *app.sessionCounter
+	return func() tea.Msg {
+		return ThreadCreatedMsg{
+			ThreadID: fmt.Sprintf("session-%d", counter),
+			Title:    fmt.Sprintf("Session %d", counter),
 		}
 	}
-	return nil
 }
 
 func (app AppModel) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
