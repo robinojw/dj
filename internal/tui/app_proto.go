@@ -45,7 +45,10 @@ func (app AppModel) listenForEvents() tea.Cmd {
 }
 
 func (app AppModel) handleProtoEvent(message appserver.JsonRpcMessage) (tea.Model, tea.Cmd) {
-	tuiMsg := ProtoEventToMsg(message)
+	tuiMsg := V2MessageToMsg(message)
+	if tuiMsg == nil {
+		tuiMsg = ProtoEventToMsg(message)
+	}
 	if tuiMsg == nil {
 		return app, app.listenForEvents()
 	}
