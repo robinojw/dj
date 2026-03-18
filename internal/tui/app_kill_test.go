@@ -7,6 +7,8 @@ import (
 	"github.com/robinojw/dj/internal/state"
 )
 
+const errExpectedRemaining = "expected %s remaining, got %s"
+
 func TestAppKillSessionRemovesThread(test *testing.T) {
 	store := state.NewThreadStore()
 	store.Add(testThreadID1, testTitleThread1)
@@ -22,7 +24,7 @@ func TestAppKillSessionRemovesThread(test *testing.T) {
 		test.Fatalf("expected 1 thread after kill, got %d", len(threads))
 	}
 	if threads[0].ID != testThreadID2 {
-		test.Errorf("expected %s remaining, got %s", testThreadID2, threads[0].ID)
+		test.Errorf(errExpectedRemaining, testThreadID2, threads[0].ID)
 	}
 	_ = appModel
 }
@@ -123,5 +125,32 @@ func TestAppKillSessionReturnsFocusToCanvas(test *testing.T) {
 
 	if appModel.FocusPane() != FocusPaneCanvas {
 		test.Errorf("expected canvas focus after killing last pinned, got %d", appModel.FocusPane())
+	}
+}
+
+func TestAppKillSessionInTreeMode(test *testing.T) {
+	store := state.NewThreadStore()
+	store.Add(testThreadID1, testThreadTitle1)
+	store.Add(testThreadID2, testThreadTitle2)
+	app := NewAppModel(store)
+
+	tKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}
+	updated, _ := app.Update(tKey)
+	app = updated.(AppModel)
+
+	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	updated, _ = app.Update(downKey)
+	app = updated.(AppModel)
+
+	kKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	updated, _ = app.Update(kKey)
+	_ = updated.(AppModel)
+
+	threads := store.All()
+	if len(threads) != 1 {
+		test.Fatalf("expected 1 thread after kill in tree mode, got %d", len(threads))
+	}
+	if threads[0].ID != testThreadID1 {
+		test.Errorf(errExpectedRemaining, testThreadID1, threads[0].ID)
 	}
 }
