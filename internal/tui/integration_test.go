@@ -25,21 +25,21 @@ func TestIntegrationEndToEnd(test *testing.T) {
 	defer client.Stop()
 
 	store := state.NewThreadStore()
-	events := make(chan SessionConfiguredMsg, 1)
+	events := make(chan ThreadStartedMsg, 1)
 
 	go client.ReadLoop(func(message appserver.JsonRpcMessage) {
-		msg := ProtoEventToMsg(message)
-		if configured, ok := msg.(SessionConfiguredMsg); ok {
-			store.Add(configured.SessionID, configured.Model)
-			events <- configured
+		msg := V2MessageToMsg(message)
+		if started, ok := msg.(ThreadStartedMsg); ok {
+			store.Add(started.ThreadID, started.ThreadID)
+			events <- started
 		}
 	})
 
 	select {
-	case configured := <-events:
-		test.Logf("Connected: session %s, model %s", configured.SessionID, configured.Model)
+	case started := <-events:
+		test.Logf("Connected: thread %s started", started.ThreadID)
 	case <-ctx.Done():
-		test.Fatal("timeout waiting for session_configured")
+		test.Fatal("timeout waiting for thread_started")
 	}
 
 	threads := store.All()

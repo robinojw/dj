@@ -28,8 +28,6 @@ type AppModel struct {
 	canvasMode       int
 	width            int
 	height           int
-	sessionID        string
-	currentMessageID string
 	events           chan appserver.JsonRpcMessage
 	ptySessions      map[string]*PTYSession
 	ptyEvents        chan PTYOutputMsg
@@ -137,64 +135,25 @@ func (app AppModel) handleThreadCreated(msg ThreadCreatedMsg) (tea.Model, tea.Cm
 }
 
 func (app AppModel) handleAgentMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
-	result, cmd, handled := app.handleV2Msg(msg)
-	if handled {
-		return result, cmd
-	}
-	return app.handleLegacyMsg(msg)
-}
-
-func (app AppModel) handleV2Msg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case ThreadStartedMsg:
-		model, cmd := app.handleThreadStarted(msg)
-		return model, cmd, true
+		return app.handleThreadStarted(msg)
 	case TurnStartedMsg:
-		model, cmd := app.handleTurnStarted(msg)
-		return model, cmd, true
+		return app.handleTurnStarted(msg)
 	case TurnCompletedMsg:
-		model, cmd := app.handleTurnCompleted(msg)
-		return model, cmd, true
+		return app.handleTurnCompleted(msg)
 	case V2AgentDeltaMsg:
-		model, cmd := app.handleV2AgentDelta(msg)
-		return model, cmd, true
+		return app.handleV2AgentDelta(msg)
 	case CollabSpawnMsg:
-		model, cmd := app.handleCollabSpawn(msg)
-		return model, cmd, true
+		return app.handleCollabSpawn(msg)
 	case CollabCloseMsg:
-		model, cmd := app.handleCollabClose(msg)
-		return model, cmd, true
+		return app.handleCollabClose(msg)
 	case ThreadStatusChangedMsg:
-		model, cmd := app.handleThreadStatusChanged(msg)
-		return model, cmd, true
+		return app.handleThreadStatusChanged(msg)
 	case V2ExecApprovalMsg:
-		model, cmd := app.handleV2ExecApproval(msg)
-		return model, cmd, true
+		return app.handleV2ExecApproval(msg)
 	case V2FileApprovalMsg:
-		model, cmd := app.handleV2FileApproval(msg)
-		return model, cmd, true
-	}
-	return app, nil, false
-}
-
-func (app AppModel) handleLegacyMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case SessionConfiguredMsg:
-		return app.handleSessionConfigured(msg)
-	case TaskStartedMsg:
-		return app.handleTaskStarted()
-	case AgentDeltaMsg:
-		return app.handleAgentDelta(msg)
-	case AgentMessageCompletedMsg:
-		return app.handleAgentMessageCompleted()
-	case TaskCompleteMsg:
-		return app.handleTaskComplete()
-	case ExecApprovalRequestMsg:
-		return app.handleExecApproval(msg)
-	case PatchApprovalRequestMsg:
-		return app.handlePatchApproval(msg)
-	case AgentReasoningDeltaMsg:
-		return app.handleReasoningDelta()
+		return app.handleV2FileApproval(msg)
 	}
 	return app, nil
 }

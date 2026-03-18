@@ -1,39 +1,5 @@
 package tui
 
-type SessionConfiguredMsg struct {
-	SessionID string
-	Model     string
-}
-
-type TaskStartedMsg struct{}
-
-type TaskCompleteMsg struct {
-	LastMessage string
-}
-
-type AgentDeltaMsg struct {
-	Delta string
-}
-
-type AgentMessageCompletedMsg struct {
-	Message string
-}
-
-type AgentReasoningDeltaMsg struct {
-	Delta string
-}
-
-type ExecApprovalRequestMsg struct {
-	EventID string
-	Command string
-	Cwd     string
-}
-
-type PatchApprovalRequestMsg struct {
-	EventID string
-	Patch   string
-}
-
 type ThreadCreatedMsg struct {
 	ThreadID string
 	Title    string

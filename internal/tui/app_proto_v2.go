@@ -20,11 +20,13 @@ func (app AppModel) handleThreadStarted(msg ThreadStartedMsg) (tea.Model, tea.Cm
 
 func (app AppModel) handleTurnStarted(msg TurnStartedMsg) (tea.Model, tea.Cmd) {
 	app.store.UpdateStatus(msg.ThreadID, state.StatusActive, "")
+	app.store.UpdateActivity(msg.ThreadID, activityThinking)
 	return app, nil
 }
 
 func (app AppModel) handleTurnCompleted(msg TurnCompletedMsg) (tea.Model, tea.Cmd) {
 	app.store.UpdateStatus(msg.ThreadID, state.StatusCompleted, "")
+	app.store.UpdateActivity(msg.ThreadID, "")
 	return app, nil
 }
 
@@ -34,7 +36,16 @@ func (app AppModel) handleV2AgentDelta(msg V2AgentDeltaMsg) (tea.Model, tea.Cmd)
 		return app, nil
 	}
 	thread.AppendDelta("", msg.Delta)
+	snippet := v2DeltaSnippet(msg.Delta)
+	app.store.UpdateActivity(msg.ThreadID, snippet)
 	return app, nil
+}
+
+func v2DeltaSnippet(delta string) string {
+	if len(delta) <= activitySnippetMaxLen {
+		return delta
+	}
+	return delta[len(delta)-activitySnippetMaxLen:]
 }
 
 func (app AppModel) handleCollabSpawn(msg CollabSpawnMsg) (tea.Model, tea.Cmd) {
@@ -55,6 +66,8 @@ func (app AppModel) handleThreadStatusChanged(msg ThreadStatusChangedMsg) (tea.M
 }
 
 func (app AppModel) handleV2ExecApproval(msg V2ExecApprovalMsg) (tea.Model, tea.Cmd) {
+	activity := activityRunningPrefix + msg.Command
+	app.store.UpdateActivity(msg.ThreadID, activity)
 	if app.client != nil {
 		app.client.SendApproval(msg.RequestID, true)
 	}
@@ -62,6 +75,7 @@ func (app AppModel) handleV2ExecApproval(msg V2ExecApprovalMsg) (tea.Model, tea.
 }
 
 func (app AppModel) handleV2FileApproval(msg V2FileApprovalMsg) (tea.Model, tea.Cmd) {
+	app.store.UpdateActivity(msg.ThreadID, activityApplyingPatch)
 	if app.client != nil {
 		app.client.SendApproval(msg.RequestID, true)
 	}

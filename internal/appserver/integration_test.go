@@ -4,38 +4,36 @@ package appserver
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 )
 
-func TestIntegrationProtoConnect(t *testing.T) {
+const integrationTestTimeout = 15 * time.Second
+const integrationEventBuffer = 10
+
+func TestIntegrationV2Connect(test *testing.T) {
 	client := NewClient("codex", "proto")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), integrationTestTimeout)
 	defer cancel()
 
 	if err := client.Start(ctx); err != nil {
-		t.Fatalf("Failed to start codex proto: %v", err)
+		test.Fatalf("Failed to start codex proto: %v", err)
 	}
 	defer client.Stop()
 
-	events := make(chan ProtoEvent, 10)
-	go client.ReadLoop(func(event ProtoEvent) {
-		events <- event
+	events := make(chan JsonRpcMessage, integrationEventBuffer)
+	go client.ReadLoop(func(message JsonRpcMessage) {
+		events <- message
 	})
 
 	select {
-	case event := <-events:
-		var header EventHeader
-		if err := json.Unmarshal(event.Msg, &header); err != nil {
-			t.Fatalf("unmarshal header: %v", err)
+	case message := <-events:
+		if message.Method == "" {
+			test.Fatal("expected a notification with a method")
 		}
-		if header.Type != EventSessionConfigured {
-			t.Errorf("expected session_configured, got %s", header.Type)
-		}
-		t.Logf("Connected: received %s event", header.Type)
+		test.Logf("Connected: received method %s", message.Method)
 	case <-ctx.Done():
-		t.Fatal("timeout waiting for session_configured")
+		test.Fatal("timeout waiting for first event")
 	}
 }
