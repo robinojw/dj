@@ -44,6 +44,7 @@ var keybindings = []keybinding{
 	{"Esc", "Back / close overlay"},
 	{"t", "Toggle tree view"},
 	{"n", "New thread"},
+	{"k", "Kill selected session"},
 	{"Ctrl+B", "Prefix key (tmux-style)"},
 	{"Ctrl+B m", "Open context menu"},
 	{"Ctrl+B ←/→", "Cycle session panes"},

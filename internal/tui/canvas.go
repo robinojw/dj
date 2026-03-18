@@ -57,6 +57,18 @@ func (canvas *CanvasModel) SetSelected(index int) {
 	}
 }
 
+func (canvas *CanvasModel) ClampSelected() {
+	threads := canvas.store.All()
+	maxIndex := len(threads) - 1
+	if maxIndex < 0 {
+		canvas.selected = 0
+		return
+	}
+	if canvas.selected > maxIndex {
+		canvas.selected = maxIndex
+	}
+}
+
 func (canvas *CanvasModel) MoveRight() {
 	threads := canvas.store.All()
 	if canvas.selected < len(threads)-1 {
