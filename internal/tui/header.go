@@ -14,6 +14,7 @@ const headerTitle = "DJ — Codex TUI Visualizer"
 
 var headerHints = []string{
 	"n: new",
+	"s: select",
 	"Enter: open",
 	"?: help",
 	"t: tree",

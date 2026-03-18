@@ -8,32 +8,42 @@ import (
 )
 
 const (
-	minCardWidth  = 20
-	minCardHeight = 4
+	minCardWidth       = 20
+	maxCardWidth       = 50
+	minCardHeight      = 4
+	maxCardHeight      = 12
+	cardBorderPadding  = 4
+	truncateEllipsisLen = 3
 )
 
 var (
+	colorIdle = lipgloss.Color("245")
+
 	statusColors = map[string]lipgloss.Color{
 		state.StatusActive:    lipgloss.Color("42"),
-		state.StatusIdle:      lipgloss.Color("245"),
+		state.StatusIdle:      colorIdle,
 		state.StatusCompleted: lipgloss.Color("34"),
 		state.StatusError:     lipgloss.Color("196"),
 	}
 
-	defaultStatusColor = lipgloss.Color("245")
+	defaultStatusColor = colorIdle
 )
+
+const pinnedIndicator = " ✓"
 
 type CardModel struct {
 	thread   *state.ThreadState
 	selected bool
+	pinned   bool
 	width    int
 	height   int
 }
 
-func NewCardModel(thread *state.ThreadState, selected bool) CardModel {
+func NewCardModel(thread *state.ThreadState, selected bool, pinned bool) CardModel {
 	return CardModel{
 		thread:   thread,
 		selected: selected,
+		pinned:   pinned,
 		width:    minCardWidth,
 		height:   minCardHeight,
 	}
@@ -60,7 +70,14 @@ func (card CardModel) View() string {
 		Foreground(statusColor).
 		Render(card.thread.Status)
 
-	title := truncate(card.thread.Title, card.width-4)
+	titleMaxLen := card.width - cardBorderPadding
+	if card.pinned {
+		titleMaxLen -= len(pinnedIndicator)
+	}
+	title := truncate(card.thread.Title, titleMaxLen)
+	if card.pinned {
+		title += pinnedIndicator
+	}
 	content := fmt.Sprintf("%s\n%s", title, statusLine)
 
 	style := lipgloss.NewStyle().
@@ -82,5 +99,5 @@ func truncate(text string, maxLen int) string {
 	if len(text) <= maxLen {
 		return text
 	}
-	return text[:maxLen-3] + "..."
+	return text[:maxLen-truncateEllipsisLen] + "..."
 }

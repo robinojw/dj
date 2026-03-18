@@ -213,7 +213,7 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return app, app.createThread()
 	case "?":
 		app.helpVisible = !app.helpVisible
-	case " ":
+	case " ", "s":
 		return app.togglePin()
 	}
 	return app, nil

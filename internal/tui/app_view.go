@@ -57,6 +57,7 @@ func (app AppModel) renderSplitView(title string, status string) string {
 }
 
 func (app AppModel) renderCanvas() string {
+	app.canvas.SetPinnedIDs(app.sessionPanel.PinnedSessions())
 	canvas := app.canvas.View()
 	if app.canvasMode == CanvasModeTree {
 		treeView := app.tree.View()
