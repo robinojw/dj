@@ -3,119 +3,135 @@ package appserver
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"io"
 	"testing"
 	"time"
 )
 
-func TestClientStartStop(t *testing.T) {
-	client := NewClient("cat")
+const (
+	clientTestTimeout       = 5 * time.Second
+	clientTestEventWait     = 3 * time.Second
+	clientTestChannelSize   = 10
+	clientTestCommand       = "cat"
+	clientTestStartFail     = "Start failed: %v"
+	clientTestTimeoutMsg    = "timeout waiting for message"
+	clientTestRequestID     = "req-1"
+	clientTestSendID        = "test-1"
+	clientTestNewline       = "\n"
+	clientTestExpectedID    = "expected id %s, got %s"
+	clientTestExpectedValue = "expected %s, got %s"
+)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func TestClientStartStop(test *testing.T) {
+	client := NewClient(clientTestCommand)
+
+	ctx, cancel := context.WithTimeout(context.Background(), clientTestTimeout)
 	defer cancel()
 
 	if err := client.Start(ctx); err != nil {
-		t.Fatalf("Start failed: %v", err)
+		test.Fatalf(clientTestStartFail, err)
 	}
 
 	if !client.Running() {
-		t.Fatal("expected client to be running")
+		test.Fatal("expected client to be running")
 	}
 
 	if err := client.Stop(); err != nil {
-		t.Fatalf("Stop failed: %v", err)
+		test.Fatalf("Stop failed: %v", err)
 	}
 
 	if client.Running() {
-		t.Fatal("expected client to be stopped")
+		test.Fatal("expected client to be stopped")
 	}
 }
 
-func TestClientSendAndReadLoop(t *testing.T) {
-	client := NewClient("cat")
+func TestClientSendAndReadLoop(test *testing.T) {
+	client := NewClient(clientTestCommand)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), clientTestTimeout)
 	defer cancel()
 
 	if err := client.Start(ctx); err != nil {
-		t.Fatalf("Start failed: %v", err)
+		test.Fatalf(clientTestStartFail, err)
 	}
 	defer client.Stop()
 
-	events := make(chan ProtoEvent, 10)
-	go client.ReadLoop(func(event ProtoEvent) {
-		events <- event
+	messages := make(chan JsonRpcMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JsonRpcMessage) {
+		messages <- message
 	})
 
-	sub := &ProtoSubmission{
-		ID: "test-1",
-		Op: json.RawMessage(`{"type":"user_input"}`),
+	request := &JsonRpcRequest{
+		jsonRpcOutgoing: jsonRpcOutgoing{JsonRpc: jsonRpcVersion, ID: clientTestSendID},
+		Method:          MethodTurnStart,
 	}
-	if err := client.Send(sub); err != nil {
-		t.Fatalf("Send failed: %v", err)
+	if err := client.Send(request); err != nil {
+		test.Fatalf("Send failed: %v", err)
 	}
 
 	select {
-	case event := <-events:
-		if event.ID != "test-1" {
-			t.Errorf("expected id test-1, got %s", event.ID)
+	case message := <-messages:
+		if message.ID != clientTestSendID {
+			test.Errorf(clientTestExpectedID, clientTestSendID, message.ID)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout waiting for event")
+	case <-time.After(clientTestEventWait):
+		test.Fatal(clientTestTimeoutMsg)
 	}
 }
 
-func TestClientNextID(t *testing.T) {
+func TestClientNextID(test *testing.T) {
 	client := NewClient("echo")
 	first := client.NextID()
 	second := client.NextID()
 	if first == second {
-		t.Error("expected unique IDs")
+		test.Error("expected unique IDs")
 	}
 	if first != "dj-1" {
-		t.Errorf("expected dj-1, got %s", first)
+		test.Errorf("expected dj-1, got %s", first)
 	}
 	if second != "dj-2" {
-		t.Errorf("expected dj-2, got %s", second)
+		test.Errorf("expected dj-2, got %s", second)
 	}
 }
 
-func TestClientSendUserInput(t *testing.T) {
-	client := NewClient("cat")
+func TestClientSendUserInput(test *testing.T) {
+	client := NewClient(clientTestCommand)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), clientTestTimeout)
 	defer cancel()
 
 	if err := client.Start(ctx); err != nil {
-		t.Fatalf("Start failed: %v", err)
+		test.Fatalf(clientTestStartFail, err)
 	}
 	defer client.Stop()
 
-	events := make(chan ProtoEvent, 10)
-	go client.ReadLoop(func(event ProtoEvent) {
-		events <- event
+	messages := make(chan JsonRpcMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JsonRpcMessage) {
+		messages <- message
 	})
 
-	id, err := client.SendUserInput("Hello")
+	requestID, err := client.SendUserInput("Hello")
 	if err != nil {
-		t.Fatalf("SendUserInput failed: %v", err)
+		test.Fatalf("SendUserInput failed: %v", err)
 	}
-	if id == "" {
-		t.Error("expected non-empty id")
+	if requestID == "" {
+		test.Error("expected non-empty id")
 	}
 
 	select {
-	case event := <-events:
-		if event.ID != id {
-			t.Errorf("expected id %s, got %s", id, event.ID)
+	case message := <-messages:
+		if message.ID != requestID {
+			test.Errorf(clientTestExpectedID, requestID, message.ID)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout waiting for event")
+		if message.Method != MethodTurnStart {
+			test.Errorf("expected method %s, got %s", MethodTurnStart, message.Method)
+		}
+	case <-time.After(clientTestEventWait):
+		test.Fatal(clientTestTimeoutMsg)
 	}
 }
 
-func TestReadLoopParsesProtoEvents(t *testing.T) {
+func TestReadLoopParsesV2Notification(test *testing.T) {
 	clientRead, serverWrite := io.Pipe()
 
 	client := &Client{}
@@ -124,55 +140,85 @@ func TestReadLoopParsesProtoEvents(t *testing.T) {
 	client.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
 	client.running.Store(true)
 
-	events := make(chan ProtoEvent, 10)
-	go client.ReadLoop(func(event ProtoEvent) {
-		events <- event
+	messages := make(chan JsonRpcMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JsonRpcMessage) {
+		messages <- message
 	})
 
-	eventJSON := `{"id":"","msg":{"type":"session_configured","session_id":"s-1","model":"o4-mini"}}` + "\n"
-	serverWrite.Write([]byte(eventJSON))
+	line := `{"jsonrpc":"2.0","method":"thread/started","params":{"thread":{"id":"t-1"}}}` + clientTestNewline
+	serverWrite.Write([]byte(line))
 
 	select {
-	case event := <-events:
-		var header EventHeader
-		json.Unmarshal(event.Msg, &header)
-		if header.Type != EventSessionConfigured {
-			t.Errorf("expected session_configured, got %s", header.Type)
+	case message := <-messages:
+		if message.Method != MethodThreadStarted {
+			test.Errorf(clientTestExpectedValue, MethodThreadStarted, message.Method)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout waiting for event")
+	case <-time.After(clientTestEventWait):
+		test.Fatal(clientTestTimeoutMsg)
 	}
 
 	serverWrite.Close()
 }
 
-func TestClientSendApproval(t *testing.T) {
-	client := NewClient("cat")
+func TestReadLoopParsesV2Request(test *testing.T) {
+	clientRead, serverWrite := io.Pipe()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	client := &Client{}
+	client.stdout = clientRead
+	client.scanner = bufio.NewScanner(clientRead)
+	client.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
+	client.running.Store(true)
+
+	messages := make(chan JsonRpcMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JsonRpcMessage) {
+		messages <- message
+	})
+
+	line := `{"jsonrpc":"2.0","id":"req-1","method":"item/commandExecution/requestApproval","params":{"command":"ls"}}` + clientTestNewline
+	serverWrite.Write([]byte(line))
+
+	select {
+	case message := <-messages:
+		if message.ID != clientTestRequestID {
+			test.Errorf(clientTestExpectedValue, clientTestRequestID, message.ID)
+		}
+		if !message.IsRequest() {
+			test.Error("should be a request")
+		}
+	case <-time.After(clientTestEventWait):
+		test.Fatal(clientTestTimeoutMsg)
+	}
+
+	serverWrite.Close()
+}
+
+func TestClientSendApproval(test *testing.T) {
+	client := NewClient(clientTestCommand)
+
+	ctx, cancel := context.WithTimeout(context.Background(), clientTestTimeout)
 	defer cancel()
 
 	if err := client.Start(ctx); err != nil {
-		t.Fatalf("Start failed: %v", err)
+		test.Fatalf(clientTestStartFail, err)
 	}
 	defer client.Stop()
 
-	events := make(chan ProtoEvent, 10)
-	go client.ReadLoop(func(event ProtoEvent) {
-		events <- event
+	messages := make(chan JsonRpcMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JsonRpcMessage) {
+		messages <- message
 	})
 
-	err := client.SendApproval("req-1", OpExecApproval, true)
+	err := client.SendApproval(clientTestRequestID, true)
 	if err != nil {
-		t.Fatalf("SendApproval failed: %v", err)
+		test.Fatalf("SendApproval failed: %v", err)
 	}
 
 	select {
-	case event := <-events:
-		if event.ID != "req-1" {
-			t.Errorf("expected id req-1, got %s", event.ID)
+	case message := <-messages:
+		if message.ID != clientTestRequestID {
+			test.Errorf(clientTestExpectedID, clientTestRequestID, message.ID)
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout waiting for event")
+	case <-time.After(clientTestEventWait):
+		test.Fatal(clientTestTimeoutMsg)
 	}
 }

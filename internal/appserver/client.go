@@ -13,6 +13,8 @@ import (
 
 const scannerBufferSize = 1024 * 1024
 
+const jsonRpcVersion = "2.0"
+
 // Client manages a child codex proto process and bidirectional communication.
 type Client struct {
 	command string
@@ -28,7 +30,7 @@ type Client struct {
 	nextID  atomic.Int64
 	running atomic.Bool
 
-	OnEvent  func(event ProtoEvent)
+	OnEvent  func(message JsonRpcMessage)
 	OnStderr func(line string)
 }
 
@@ -41,137 +43,99 @@ func NewClient(command string, args ...string) *Client {
 }
 
 // Start spawns the child process.
-func (c *Client) Start(ctx context.Context) error {
-	c.cmd = exec.CommandContext(ctx, c.command, c.args...)
+func (client *Client) Start(ctx context.Context) error {
+	client.cmd = exec.CommandContext(ctx, client.command, client.args...)
 
 	var err error
-	c.stdin, err = c.cmd.StdinPipe()
+	if err = client.setupPipes(); err != nil {
+		return err
+	}
+
+	client.scanner = bufio.NewScanner(client.stdout)
+	client.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
+
+	if err = client.cmd.Start(); err != nil {
+		return fmt.Errorf("start process: %w", err)
+	}
+
+	client.running.Store(true)
+	go client.drainStderr()
+	return nil
+}
+
+func (client *Client) setupPipes() error {
+	var err error
+	client.stdin, err = client.cmd.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("stdin pipe: %w", err)
 	}
 
-	c.stdout, err = c.cmd.StdoutPipe()
+	client.stdout, err = client.cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
 
-	c.stderr, err = c.cmd.StderrPipe()
+	client.stderr, err = client.cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("stderr pipe: %w", err)
 	}
-
-	c.scanner = bufio.NewScanner(c.stdout)
-	c.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
-
-	if err := c.cmd.Start(); err != nil {
-		return fmt.Errorf("start process: %w", err)
-	}
-
-	c.running.Store(true)
-	go c.drainStderr()
 	return nil
 }
 
 // Running returns true if the child process is alive.
-func (c *Client) Running() bool {
-	return c.running.Load()
+func (client *Client) Running() bool {
+	return client.running.Load()
 }
 
 // Stop terminates the child process gracefully.
-func (c *Client) Stop() error {
-	if !c.running.Load() {
+func (client *Client) Stop() error {
+	if !client.running.Load() {
 		return nil
 	}
-	c.running.Store(false)
+	client.running.Store(false)
 
-	if c.stdin != nil {
-		c.stdin.Close()
+	if client.stdin != nil {
+		client.stdin.Close()
 	}
 
-	if c.cmd != nil && c.cmd.Process != nil {
-		return c.cmd.Wait()
+	hasProcess := client.cmd != nil && client.cmd.Process != nil
+	if hasProcess {
+		return client.cmd.Wait()
 	}
 	return nil
 }
 
-func (c *Client) drainStderr() {
-	if c.stderr == nil {
+func (client *Client) drainStderr() {
+	if client.stderr == nil {
 		return
 	}
-	scanner := bufio.NewScanner(c.stderr)
+	scanner := bufio.NewScanner(client.stderr)
 	scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
 	for scanner.Scan() {
-		if c.OnStderr != nil {
-			c.OnStderr(scanner.Text())
+		if client.OnStderr != nil {
+			client.OnStderr(scanner.Text())
 		}
 	}
 }
 
-// Send writes a ProtoSubmission to the child's stdin as a JSONL line.
-func (c *Client) Send(sub *ProtoSubmission) error {
-	data, err := json.Marshal(sub)
-	if err != nil {
-		return fmt.Errorf("marshal submission: %w", err)
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	data = append(data, '\n')
-	_, err = c.stdin.Write(data)
-	return err
-}
-
 // NextID returns a unique string ID for submissions.
-func (c *Client) NextID() string {
-	return fmt.Sprintf("dj-%d", c.nextID.Add(1))
+func (client *Client) NextID() string {
+	return fmt.Sprintf("dj-%d", client.nextID.Add(1))
 }
 
-// ReadLoop reads JSONL events from stdout and dispatches each to the handler.
-func (c *Client) ReadLoop(handler func(ProtoEvent)) {
-	for c.scanner.Scan() {
-		line := c.scanner.Bytes()
+// ReadLoop reads JSONL messages from stdout and dispatches each to the handler.
+func (client *Client) ReadLoop(handler func(JsonRpcMessage)) {
+	for client.scanner.Scan() {
+		line := client.scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
 
-		var event ProtoEvent
-		if err := json.Unmarshal(line, &event); err != nil {
+		var message JsonRpcMessage
+		if err := json.Unmarshal(line, &message); err != nil {
 			continue
 		}
 
-		handler(event)
+		handler(message)
 	}
-}
-
-// SendUserInput sends a text message to the codex session.
-func (c *Client) SendUserInput(text string) (string, error) {
-	id := c.NextID()
-	op := UserInputOp{
-		Type: OpUserInput,
-		Items: []InputItem{
-			{Type: "text", Text: text},
-		},
-	}
-	opData, _ := json.Marshal(op)
-	sub := &ProtoSubmission{
-		ID: id,
-		Op: opData,
-	}
-	return id, c.Send(sub)
-}
-
-// SendInterrupt sends an interrupt to cancel the current task.
-func (c *Client) SendInterrupt() error {
-	id := c.NextID()
-	op := map[string]string{"type": OpInterrupt}
-	opData, _ := json.Marshal(op)
-	return c.Send(&ProtoSubmission{ID: id, Op: opData})
-}
-
-// SendApproval responds to an exec or patch approval request.
-func (c *Client) SendApproval(eventID string, opType string, approved bool) error {
-	op := map[string]any{"type": opType, "approved": approved}
-	opData, _ := json.Marshal(op)
-	return c.Send(&ProtoSubmission{ID: eventID, Op: opData})
 }

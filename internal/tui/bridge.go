@@ -7,30 +7,39 @@ import (
 	"github.com/robinojw/dj/internal/appserver"
 )
 
-// ProtoEventToMsg converts a codex proto event into a Bubble Tea message.
-func ProtoEventToMsg(event appserver.ProtoEvent) tea.Msg {
-	var header appserver.EventHeader
-	if err := json.Unmarshal(event.Msg, &header); err != nil {
+// ProtoEventToMsg converts a JSON-RPC message into a Bubble Tea message.
+// Routes on legacy event types extracted from Params for backward compatibility.
+func ProtoEventToMsg(message appserver.JsonRpcMessage) tea.Msg {
+	if message.Params == nil {
 		return nil
 	}
 
-	switch header.Type {
+	var header appserver.EventHeader
+	if err := json.Unmarshal(message.Params, &header); err != nil {
+		return nil
+	}
+
+	return routeLegacyEvent(header.Type, message)
+}
+
+func routeLegacyEvent(eventType string, message appserver.JsonRpcMessage) tea.Msg {
+	switch eventType {
 	case appserver.EventSessionConfigured:
-		return decodeSessionConfigured(event.Msg)
+		return decodeSessionConfigured(message.Params)
 	case appserver.EventTaskStarted:
 		return TaskStartedMsg{}
 	case appserver.EventTaskComplete:
-		return decodeTaskComplete(event.Msg)
+		return decodeTaskComplete(message.Params)
 	case appserver.EventAgentMessageDelta:
-		return decodeAgentDelta(event.Msg)
+		return decodeAgentDelta(message.Params)
 	case appserver.EventAgentMessage:
-		return decodeAgentMessage(event.Msg)
+		return decodeAgentMessage(message.Params)
 	case appserver.EventAgentReasonDelta:
-		return decodeReasoningDelta(event.Msg)
+		return decodeReasoningDelta(message.Params)
 	case appserver.EventExecApproval:
-		return decodeExecApproval(event)
+		return decodeExecApproval(message)
 	case appserver.EventPatchApproval:
-		return decodePatchApproval(event)
+		return decodePatchApproval(message)
 	}
 	return nil
 }
@@ -63,11 +72,11 @@ func decodeAgentDelta(raw json.RawMessage) tea.Msg {
 }
 
 func decodeAgentMessage(raw json.RawMessage) tea.Msg {
-	var msg appserver.AgentMessage
-	if err := json.Unmarshal(raw, &msg); err != nil {
+	var message appserver.AgentMessage
+	if err := json.Unmarshal(raw, &message); err != nil {
 		return nil
 	}
-	return AgentMessageCompletedMsg{Message: msg.Message}
+	return AgentMessageCompletedMsg{Message: message.Message}
 }
 
 func decodeReasoningDelta(raw json.RawMessage) tea.Msg {
@@ -78,25 +87,25 @@ func decodeReasoningDelta(raw json.RawMessage) tea.Msg {
 	return AgentReasoningDeltaMsg{Delta: delta.Delta}
 }
 
-func decodeExecApproval(event appserver.ProtoEvent) tea.Msg {
-	var req appserver.ExecCommandRequest
-	if err := json.Unmarshal(event.Msg, &req); err != nil {
+func decodeExecApproval(message appserver.JsonRpcMessage) tea.Msg {
+	var request appserver.ExecCommandRequest
+	if err := json.Unmarshal(message.Params, &request); err != nil {
 		return nil
 	}
 	return ExecApprovalRequestMsg{
-		EventID: event.ID,
-		Command: req.Command,
-		Cwd:     req.Cwd,
+		EventID: message.ID,
+		Command: request.Command,
+		Cwd:     request.Cwd,
 	}
 }
 
-func decodePatchApproval(event appserver.ProtoEvent) tea.Msg {
-	var req appserver.PatchApplyRequest
-	if err := json.Unmarshal(event.Msg, &req); err != nil {
+func decodePatchApproval(message appserver.JsonRpcMessage) tea.Msg {
+	var request appserver.PatchApplyRequest
+	if err := json.Unmarshal(message.Params, &request); err != nil {
 		return nil
 	}
 	return PatchApprovalRequestMsg{
-		EventID: event.ID,
-		Patch:   req.Patch,
+		EventID: message.ID,
+		Patch:   request.Patch,
 	}
 }

@@ -32,7 +32,7 @@ type AppModel struct {
 	height           int
 	sessionID        string
 	currentMessageID string
-	events           chan appserver.ProtoEvent
+	events           chan appserver.JsonRpcMessage
 	ptySessions      map[string]*PTYSession
 	ptyEvents        chan PTYOutputMsg
 	sessionCounter   *int
@@ -50,7 +50,7 @@ func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 		tree:           NewTreeModel(store),
 		prefix:         NewPrefixHandler(),
 		help:           NewHelpModel(),
-		events:         make(chan appserver.ProtoEvent, eventChannelSize),
+		events:         make(chan appserver.JsonRpcMessage, eventChannelSize),
 		ptySessions:    make(map[string]*PTYSession),
 		ptyEvents:      make(chan PTYOutputMsg, eventChannelSize),
 		sessionCounter: new(int),
@@ -109,8 +109,8 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app.handleMouse(msg)
 	case tea.WindowSizeMsg:
 		return app.handleWindowSize(msg)
-	case protoEventMsg:
-		return app.handleProtoEvent(msg.Event)
+	case jsonRpcEventMsg:
+		return app.handleProtoEvent(msg.Message)
 	case PTYOutputMsg:
 		return app.handlePTYOutput(msg)
 	case AppServerErrorMsg:

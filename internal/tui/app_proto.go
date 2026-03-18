@@ -17,8 +17,8 @@ const (
 	activitySnippetMaxLen = 40
 )
 
-type protoEventMsg struct {
-	Event appserver.ProtoEvent
+type jsonRpcEventMsg struct {
+	Message appserver.JsonRpcMessage
 }
 
 func (app AppModel) connectClient() tea.Cmd {
@@ -27,8 +27,8 @@ func (app AppModel) connectClient() tea.Cmd {
 		if err := app.client.Start(ctx); err != nil {
 			return AppServerErrorMsg{Err: err}
 		}
-		go app.client.ReadLoop(func(event appserver.ProtoEvent) {
-			app.events <- event
+		go app.client.ReadLoop(func(message appserver.JsonRpcMessage) {
+			app.events <- message
 		})
 		return nil
 	}
@@ -36,16 +36,16 @@ func (app AppModel) connectClient() tea.Cmd {
 
 func (app AppModel) listenForEvents() tea.Cmd {
 	return func() tea.Msg {
-		event, ok := <-app.events
+		message, ok := <-app.events
 		if !ok {
 			return AppServerErrorMsg{Err: fmt.Errorf("connection closed")}
 		}
-		return protoEventMsg{Event: event}
+		return jsonRpcEventMsg{Message: message}
 	}
 }
 
-func (app AppModel) handleProtoEvent(event appserver.ProtoEvent) (tea.Model, tea.Cmd) {
-	tuiMsg := ProtoEventToMsg(event)
+func (app AppModel) handleProtoEvent(message appserver.JsonRpcMessage) (tea.Model, tea.Cmd) {
+	tuiMsg := ProtoEventToMsg(message)
 	if tuiMsg == nil {
 		return app, app.listenForEvents()
 	}
@@ -130,7 +130,7 @@ func (app AppModel) handleExecApproval(msg ExecApprovalRequestMsg) (tea.Model, t
 		app.store.UpdateActivity(app.sessionID, activity)
 	}
 	if app.client != nil {
-		app.client.SendApproval(msg.EventID, appserver.OpExecApproval, true)
+		app.client.SendApproval(msg.EventID, true)
 	}
 	return app, nil
 }
@@ -140,7 +140,7 @@ func (app AppModel) handlePatchApproval(msg PatchApprovalRequestMsg) (tea.Model,
 		app.store.UpdateActivity(app.sessionID, activityApplyingPatch)
 	}
 	if app.client != nil {
-		app.client.SendApproval(msg.EventID, appserver.OpPatchApproval, true)
+		app.client.SendApproval(msg.EventID, true)
 	}
 	return app, nil
 }
