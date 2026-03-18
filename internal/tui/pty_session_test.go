@@ -7,16 +7,33 @@ import (
 	"time"
 )
 
-const ptyTestTimeout = 5 * time.Second
+const (
+	ptyTestTimeout       = 5 * time.Second
+	ptyPollInterval      = 10 * time.Millisecond
+	ptyExitChannelBuffer = 10
+	ptyResizeWidth       = 120
+	ptyResizeHeight      = 40
+	ptyScrollUpAmount    = 5
+	ptyScrollDownAmount  = 3
 
-func TestPTYSessionStartAndRender(t *testing.T) {
+	ptyTestThreadID = "t-1"
+	testCmdEcho    = "echo"
+	testCmdCat     = "cat"
+	testArgHelloPty = "hello pty"
+	testArgTest     = "test"
+	testStartFailed = "start failed: %v"
+)
+
+func noopSendMsg(msg PTYOutputMsg) {}
+
+func TestPTYSessionStartAndRender(testing *testing.T) {
 	var mu sync.Mutex
 	var messages []PTYOutputMsg
 
 	session := NewPTYSession(PTYSessionConfig{
-		ThreadID: "t-1",
-		Command:  "echo",
-		Args:     []string{"hello pty"},
+		ThreadID: ptyTestThreadID,
+		Command:  testCmdEcho,
+		Args:     []string{testArgHelloPty},
 		SendMsg: func(msg PTYOutputMsg) {
 			mu.Lock()
 			messages = append(messages, msg)
@@ -25,20 +42,12 @@ func TestPTYSessionStartAndRender(t *testing.T) {
 	})
 
 	if err := session.Start(); err != nil {
-		t.Fatalf("start failed: %v", err)
+		testing.Fatalf(testStartFailed, err)
 	}
 
 	deadline := time.After(ptyTestTimeout)
 	for {
-		mu.Lock()
-		hasExited := false
-		for _, msg := range messages {
-			if msg.Exited {
-				hasExited = true
-				break
-			}
-		}
-		mu.Unlock()
+		hasExited := checkForExit(&mu, messages)
 
 		if hasExited {
 			break
@@ -46,29 +55,41 @@ func TestPTYSessionStartAndRender(t *testing.T) {
 
 		select {
 		case <-deadline:
-			t.Fatal("timed out waiting for process exit")
+			testing.Fatal("timed out waiting for process exit")
 		default:
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(ptyPollInterval)
 		}
 	}
 
 	rendered := session.Render()
-	if !strings.Contains(rendered, "hello pty") {
-		t.Errorf("expected 'hello pty' in render output, got %q", rendered)
+	if !strings.Contains(rendered, testArgHelloPty) {
+		testing.Errorf("expected 'hello pty' in render output, got %q", rendered)
 	}
 
 	if session.Running() {
-		t.Error("expected session to not be running after exit")
+		testing.Error("expected session to not be running after exit")
 	}
 }
 
-func TestPTYSessionWriteBytes(t *testing.T) {
+func checkForExit(mu *sync.Mutex, messages []PTYOutputMsg) bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	for _, msg := range messages {
+		if msg.Exited {
+			return true
+		}
+	}
+	return false
+}
+
+func TestPTYSessionWriteBytes(testing *testing.T) {
 	var mu sync.Mutex
 	var gotOutput bool
 
 	session := NewPTYSession(PTYSessionConfig{
-		ThreadID: "t-1",
-		Command:  "cat",
+		ThreadID: ptyTestThreadID,
+		Command:  testCmdCat,
 		SendMsg: func(msg PTYOutputMsg) {
 			mu.Lock()
 			if !msg.Exited {
@@ -79,13 +100,13 @@ func TestPTYSessionWriteBytes(t *testing.T) {
 	})
 
 	if err := session.Start(); err != nil {
-		t.Fatalf("start failed: %v", err)
+		testing.Fatalf(testStartFailed, err)
 	}
 	defer session.Stop()
 
 	err := session.WriteBytes([]byte("test input\n"))
 	if err != nil {
-		t.Fatalf("write failed: %v", err)
+		testing.Fatalf("write failed: %v", err)
 	}
 
 	deadline := time.After(ptyTestTimeout)
@@ -100,41 +121,41 @@ func TestPTYSessionWriteBytes(t *testing.T) {
 
 		select {
 		case <-deadline:
-			t.Fatal("timed out waiting for cat output")
+			testing.Fatal("timed out waiting for cat output")
 		default:
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(ptyPollInterval)
 		}
 	}
 
 	rendered := session.Render()
 	if !strings.Contains(rendered, "test input") {
-		t.Errorf("expected 'test input' in render output, got %q", rendered)
+		testing.Errorf("expected 'test input' in render output, got %q", rendered)
 	}
 }
 
-func TestPTYSessionResize(t *testing.T) {
+func TestPTYSessionResize(testing *testing.T) {
 	session := NewPTYSession(PTYSessionConfig{
-		ThreadID: "t-1",
-		Command:  "echo",
+		ThreadID: ptyTestThreadID,
+		Command:  testCmdEcho,
 		Args:     []string{"resize test"},
-		SendMsg:  func(msg PTYOutputMsg) {},
+		SendMsg:  noopSendMsg,
 	})
 
-	session.Resize(120, 40)
+	session.Resize(ptyResizeWidth, ptyResizeHeight)
 
-	if session.emulator.Width() != 120 {
-		t.Errorf("expected width 120, got %d", session.emulator.Width())
+	if session.emulator.Width() != ptyResizeWidth {
+		testing.Errorf("expected width %d, got %d", ptyResizeWidth, session.emulator.Width())
 	}
-	if session.emulator.Height() != 40 {
-		t.Errorf("expected height 40, got %d", session.emulator.Height())
+	if session.emulator.Height() != ptyResizeHeight {
+		testing.Errorf("expected height %d, got %d", ptyResizeHeight, session.emulator.Height())
 	}
 }
 
-func TestPTYSessionExitCallback(t *testing.T) {
-	exitCh := make(chan PTYOutputMsg, 10)
+func TestPTYSessionExitCallback(testing *testing.T) {
+	exitCh := make(chan PTYOutputMsg, ptyExitChannelBuffer)
 
 	session := NewPTYSession(PTYSessionConfig{
-		ThreadID: "t-1",
+		ThreadID: ptyTestThreadID,
 		Command:  "true",
 		SendMsg: func(msg PTYOutputMsg) {
 			exitCh <- msg
@@ -142,63 +163,117 @@ func TestPTYSessionExitCallback(t *testing.T) {
 	})
 
 	if err := session.Start(); err != nil {
-		t.Fatalf("start failed: %v", err)
+		testing.Fatalf(testStartFailed, err)
 	}
 
 	deadline := time.After(ptyTestTimeout)
 	for {
 		select {
 		case msg := <-exitCh:
-			if msg.Exited {
-				if msg.ThreadID != "t-1" {
-					t.Errorf("expected thread ID t-1, got %s", msg.ThreadID)
-				}
-				return
+			if !msg.Exited {
+				continue
 			}
+			if msg.ThreadID != ptyTestThreadID {
+				testing.Errorf("expected thread ID %s, got %s", ptyTestThreadID, msg.ThreadID)
+			}
+			return
 		case <-deadline:
-			t.Fatal("timed out waiting for exit callback")
+			testing.Fatal("timed out waiting for exit callback")
 		}
 	}
 }
 
-func TestPTYSessionWriteAfterStop(t *testing.T) {
+func TestPTYSessionWriteAfterStop(testing *testing.T) {
 	session := NewPTYSession(PTYSessionConfig{
-		ThreadID: "t-1",
-		Command:  "cat",
-		SendMsg:  func(msg PTYOutputMsg) {},
+		ThreadID: ptyTestThreadID,
+		Command:  testCmdCat,
+		SendMsg:  noopSendMsg,
 	})
 
 	if err := session.Start(); err != nil {
-		t.Fatalf("start failed: %v", err)
+		testing.Fatalf(testStartFailed, err)
 	}
 
 	session.Stop()
 
 	err := session.WriteBytes([]byte("should fail"))
 	if err == nil {
-		t.Error("expected error writing after stop")
+		testing.Error("expected error writing after stop")
 	}
 }
 
-func TestPTYSessionStop(t *testing.T) {
+func TestPTYSessionStop(testing *testing.T) {
 	session := NewPTYSession(PTYSessionConfig{
-		ThreadID: "t-1",
+		ThreadID: ptyTestThreadID,
 		Command:  "sleep",
 		Args:     []string{"60"},
-		SendMsg:  func(msg PTYOutputMsg) {},
+		SendMsg:  noopSendMsg,
 	})
 
 	if err := session.Start(); err != nil {
-		t.Fatalf("start failed: %v", err)
+		testing.Fatalf(testStartFailed, err)
 	}
 
 	if !session.Running() {
-		t.Error("expected session to be running")
+		testing.Error("expected session to be running")
 	}
 
 	session.Stop()
 
 	if session.Running() {
-		t.Error("expected session to be stopped")
+		testing.Error("expected session to be stopped")
+	}
+}
+
+func TestPTYSessionScrollOffset(testing *testing.T) {
+	session := NewPTYSession(PTYSessionConfig{
+		ThreadID: ptyTestThreadID,
+		Command:  testCmdEcho,
+		Args:     []string{testArgTest},
+		SendMsg:  noopSendMsg,
+	})
+
+	if session.ScrollOffset() != 0 {
+		testing.Errorf("expected initial offset 0, got %d", session.ScrollOffset())
+	}
+
+	if session.IsScrolledUp() {
+		testing.Error("expected not scrolled up initially")
+	}
+}
+
+func TestPTYSessionScrollUpDown(testing *testing.T) {
+	session := NewPTYSession(PTYSessionConfig{
+		ThreadID: ptyTestThreadID,
+		Command:  testCmdEcho,
+		Args:     []string{testArgTest},
+		SendMsg:  noopSendMsg,
+	})
+
+	session.ScrollUp(ptyScrollUpAmount)
+	if session.ScrollOffset() != 0 {
+		testing.Errorf("expected offset 0 with no scrollback, got %d", session.ScrollOffset())
+	}
+
+	session.ScrollDown(ptyScrollDownAmount)
+	if session.ScrollOffset() != 0 {
+		testing.Errorf("expected offset 0 after scroll down, got %d", session.ScrollOffset())
+	}
+}
+
+func TestPTYSessionScrollToBottom(testing *testing.T) {
+	session := NewPTYSession(PTYSessionConfig{
+		ThreadID: ptyTestThreadID,
+		Command:  testCmdEcho,
+		Args:     []string{testArgTest},
+		SendMsg:  noopSendMsg,
+	})
+
+	session.ScrollToBottom()
+	if session.ScrollOffset() != 0 {
+		testing.Errorf("expected offset 0 after scroll to bottom, got %d", session.ScrollOffset())
+	}
+	if session.IsScrolledUp() {
+		testing.Error("expected not scrolled up after scroll to bottom")
 	}
 }
