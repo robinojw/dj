@@ -2,51 +2,81 @@ package state
 
 import "testing"
 
-func TestNewThreadState(t *testing.T) {
-	thread := NewThreadState("t-1", "Build a web app")
-	if thread.ID != "t-1" {
-		t.Errorf("expected t-1, got %s", thread.ID)
+const (
+	testThreadID  = "t-1"
+	testTitle     = "Test"
+	testMessageID = "m-1"
+	testExecID    = "e-1"
+	testGreeting  = "Hello"
+	testActivity  = "Running: git status"
+
+	errExpectedHello = "expected Hello, got %s"
+)
+
+func TestNewThreadState(testing *testing.T) {
+	thread := NewThreadState(testThreadID, "Build a web app")
+	if thread.ID != testThreadID {
+		testing.Errorf("expected t-1, got %s", thread.ID)
 	}
 	if thread.Status != StatusIdle {
-		t.Errorf("expected idle, got %s", thread.Status)
+		testing.Errorf("expected idle, got %s", thread.Status)
 	}
 	if len(thread.Messages) != 0 {
-		t.Errorf("expected 0 messages, got %d", len(thread.Messages))
+		testing.Errorf("expected 0 messages, got %d", len(thread.Messages))
 	}
 }
 
-func TestThreadStateAppendMessage(t *testing.T) {
-	thread := NewThreadState("t-1", "Test")
+func TestThreadStateAppendMessage(testing *testing.T) {
+	thread := NewThreadState(testThreadID, testTitle)
 	thread.AppendMessage(ChatMessage{
-		ID:      "m-1",
+		ID:      testMessageID,
 		Role:    "user",
-		Content: "Hello",
+		Content: testGreeting,
 	})
 	if len(thread.Messages) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(thread.Messages))
+		testing.Fatalf("expected 1 message, got %d", len(thread.Messages))
 	}
-	if thread.Messages[0].Content != "Hello" {
-		t.Errorf("expected Hello, got %s", thread.Messages[0].Content)
-	}
-}
-
-func TestThreadStateAppendDelta(t *testing.T) {
-	thread := NewThreadState("t-1", "Test")
-	thread.AppendMessage(ChatMessage{ID: "m-1", Role: "assistant", Content: "He"})
-	thread.AppendDelta("m-1", "llo")
-
-	if thread.Messages[0].Content != "Hello" {
-		t.Errorf("expected Hello, got %s", thread.Messages[0].Content)
+	if thread.Messages[0].Content != testGreeting {
+		testing.Errorf(errExpectedHello, thread.Messages[0].Content)
 	}
 }
 
-func TestThreadStateAppendOutput(t *testing.T) {
-	thread := NewThreadState("t-1", "Test")
-	thread.AppendOutput("e-1", "line 1\n")
-	thread.AppendOutput("e-1", "line 2\n")
+func TestThreadStateAppendDelta(testing *testing.T) {
+	thread := NewThreadState(testThreadID, testTitle)
+	thread.AppendMessage(ChatMessage{ID: testMessageID, Role: "assistant", Content: "He"})
+	thread.AppendDelta(testMessageID, "llo")
 
-	output := thread.CommandOutput["e-1"]
+	if thread.Messages[0].Content != testGreeting {
+		testing.Errorf(errExpectedHello, thread.Messages[0].Content)
+	}
+}
+
+func TestThreadStateAppendOutput(testing *testing.T) {
+	thread := NewThreadState(testThreadID, testTitle)
+	thread.AppendOutput(testExecID, "line 1\n")
+	thread.AppendOutput(testExecID, "line 2\n")
+
+	output := thread.CommandOutput[testExecID]
 	if output != "line 1\nline 2\n" {
-		t.Errorf("expected combined output, got %q", output)
+		testing.Errorf("expected combined output, got %q", output)
+	}
+}
+
+func TestThreadStateSetActivity(testing *testing.T) {
+	thread := NewThreadState(testThreadID, testTitle)
+	thread.SetActivity(testActivity)
+
+	if thread.Activity != testActivity {
+		testing.Errorf("expected %s, got %s", testActivity, thread.Activity)
+	}
+}
+
+func TestThreadStateClearActivity(testing *testing.T) {
+	thread := NewThreadState(testThreadID, testTitle)
+	thread.SetActivity("Thinking...")
+	thread.ClearActivity()
+
+	if thread.Activity != "" {
+		testing.Errorf("expected empty activity, got %s", thread.Activity)
 	}
 }

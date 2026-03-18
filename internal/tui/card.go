@@ -8,19 +8,22 @@ import (
 )
 
 const (
-	minCardWidth  = 20
-	minCardHeight = 4
+	minCardWidth      = 20
+	minCardHeight     = 4
+	cardBorderPadding = 4
+	ellipsisLen       = 3
+	colorGray         = lipgloss.Color("245")
 )
 
 var (
 	statusColors = map[string]lipgloss.Color{
 		state.StatusActive:    lipgloss.Color("42"),
-		state.StatusIdle:      lipgloss.Color("245"),
+		state.StatusIdle:      colorGray,
 		state.StatusCompleted: lipgloss.Color("34"),
 		state.StatusError:     lipgloss.Color("196"),
 	}
 
-	defaultStatusColor = lipgloss.Color("245")
+	defaultStatusColor = colorGray
 )
 
 type CardModel struct {
@@ -56,12 +59,19 @@ func (card CardModel) View() string {
 		statusColor = defaultStatusColor
 	}
 
-	statusLine := lipgloss.NewStyle().
-		Foreground(statusColor).
-		Render(card.thread.Status)
+	secondLine := card.thread.Status
+	hasActivity := card.thread.Activity != ""
+	if hasActivity {
+		secondLine = card.thread.Activity
+	}
 
-	title := truncate(card.thread.Title, card.width-4)
-	content := fmt.Sprintf("%s\n%s", title, statusLine)
+	styledSecondLine := lipgloss.NewStyle().
+		Foreground(statusColor).
+		Render(truncate(secondLine, card.width-cardBorderPadding))
+
+	titleMaxLen := card.width - cardBorderPadding
+	title := truncate(card.thread.Title, titleMaxLen)
+	content := fmt.Sprintf("%s\n%s", title, styledSecondLine)
 
 	style := lipgloss.NewStyle().
 		Width(card.width).
@@ -82,5 +92,5 @@ func truncate(text string, maxLen int) string {
 	if len(text) <= maxLen {
 		return text
 	}
-	return text[:maxLen-3] + "..."
+	return text[:maxLen-ellipsisLen] + "..."
 }

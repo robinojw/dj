@@ -7,32 +7,42 @@ import (
 	"github.com/robinojw/dj/internal/state"
 )
 
-func TestCardRenderShowsTitle(t *testing.T) {
-	thread := state.NewThreadState("t-1", "Build web app")
+const (
+	testThreadID     = "t-1"
+	testTitleBuild   = "Build web app"
+	testTitleGeneric = "Test"
+	testActivity     = "Running: git status"
+	testLongActivity = "This is a very long activity string that should definitely be truncated when rendered on a small card"
+	testLargeWidth   = 50
+	testLargeHeight  = 10
+)
+
+func TestCardRenderShowsTitle(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testTitleBuild)
 	thread.Status = state.StatusActive
 
 	card := NewCardModel(thread, false)
 	output := card.View()
 
-	if !strings.Contains(output, "Build web app") {
-		t.Errorf("expected title in output, got:\n%s", output)
+	if !strings.Contains(output, testTitleBuild) {
+		testing.Errorf("expected title in output, got:\n%s", output)
 	}
 }
 
-func TestCardRenderShowsStatus(t *testing.T) {
-	thread := state.NewThreadState("t-1", "Test")
+func TestCardRenderShowsStatus(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testTitleGeneric)
 	thread.Status = state.StatusActive
 
 	card := NewCardModel(thread, false)
 	output := card.View()
 
 	if !strings.Contains(output, "active") {
-		t.Errorf("expected status in output, got:\n%s", output)
+		testing.Errorf("expected status in output, got:\n%s", output)
 	}
 }
 
-func TestCardRenderSelectedHighlight(t *testing.T) {
-	thread := state.NewThreadState("t-1", "Test")
+func TestCardRenderSelectedHighlight(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testTitleGeneric)
 	card := NewCardModel(thread, true)
 	selected := card.View()
 
@@ -40,19 +50,59 @@ func TestCardRenderSelectedHighlight(t *testing.T) {
 	unselected := card2.View()
 
 	if selected == unselected {
-		t.Error("selected and unselected cards should differ")
+		testing.Error("selected and unselected cards should differ")
 	}
 }
 
-func TestCardDynamicSize(t *testing.T) {
-	thread := state.NewThreadState("t-1", "Test")
+func TestCardDynamicSize(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testTitleGeneric)
 	thread.Status = state.StatusActive
 
 	card := NewCardModel(thread, false)
-	card.SetSize(50, 10)
+	card.SetSize(testLargeWidth, testLargeHeight)
 	output := card.View()
 
-	if !strings.Contains(output, "Test") {
-		t.Errorf("expected title in dynamic card, got:\n%s", output)
+	if !strings.Contains(output, testTitleGeneric) {
+		testing.Errorf("expected title in dynamic card, got:\n%s", output)
+	}
+}
+
+func TestCardRenderShowsActivity(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testTitleGeneric)
+	thread.Status = state.StatusActive
+	thread.Activity = testActivity
+
+	card := NewCardModel(thread, false)
+	card.SetSize(testLargeWidth, testLargeHeight)
+	output := card.View()
+
+	if !strings.Contains(output, testActivity) {
+		testing.Errorf("expected activity in output, got:\n%s", output)
+	}
+}
+
+func TestCardRenderFallsBackToStatus(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testTitleGeneric)
+	thread.Status = state.StatusIdle
+
+	card := NewCardModel(thread, false)
+	output := card.View()
+
+	if !strings.Contains(output, "idle") {
+		testing.Errorf("expected status fallback in output, got:\n%s", output)
+	}
+}
+
+func TestCardRenderActivityTruncated(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testTitleGeneric)
+	thread.Status = state.StatusActive
+	thread.Activity = testLongActivity
+
+	card := NewCardModel(thread, false)
+	card.SetSize(minCardWidth, minCardHeight)
+	output := card.View()
+
+	if !strings.Contains(output, "...") {
+		testing.Errorf("expected truncated activity with ellipsis, got:\n%s", output)
 	}
 }

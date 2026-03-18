@@ -152,6 +152,8 @@ func (app AppModel) handleAgentMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app.handleExecApproval(msg)
 	case PatchApprovalRequestMsg:
 		return app.handlePatchApproval(msg)
+	case AgentReasoningDeltaMsg:
+		return app.handleReasoningDelta()
 	}
 	return app, nil
 }

@@ -2,75 +2,104 @@ package state
 
 import "testing"
 
-func TestStoreAddAndGet(t *testing.T) {
-	store := NewThreadStore()
-	store.Add("t-1", "My Thread")
+const (
+	storeTestThreadID    = "t-1"
+	storeTestSecondID    = "t-2"
+	storeTestMissingID   = "missing"
+	storeTestMyThread    = "My Thread"
+	storeTestTitle       = "Test"
+	storeTestFirstTitle  = "First"
+	storeTestSecondTitle = "Second"
+	storeTestRunning     = "Running"
+	storeTestActivity    = "Running: git status"
+	storeTestExpectedTwo = 2
+)
 
-	thread, exists := store.Get("t-1")
+func TestStoreAddAndGet(testing *testing.T) {
+	store := NewThreadStore()
+	store.Add(storeTestThreadID, storeTestMyThread)
+
+	thread, exists := store.Get(storeTestThreadID)
 	if !exists {
-		t.Fatal("expected thread to exist")
+		testing.Fatal("expected thread to exist")
 	}
-	if thread.Title != "My Thread" {
-		t.Errorf("expected My Thread, got %s", thread.Title)
+	if thread.Title != storeTestMyThread {
+		testing.Errorf("expected My Thread, got %s", thread.Title)
 	}
 }
 
-func TestStoreGetMissing(t *testing.T) {
+func TestStoreGetMissing(testing *testing.T) {
 	store := NewThreadStore()
-	_, exists := store.Get("missing")
+	_, exists := store.Get(storeTestMissingID)
 	if exists {
-		t.Error("expected thread to not exist")
+		testing.Error("expected thread to not exist")
 	}
 }
 
-func TestStoreDelete(t *testing.T) {
+func TestStoreDelete(testing *testing.T) {
 	store := NewThreadStore()
-	store.Add("t-1", "Test")
-	store.Delete("t-1")
+	store.Add(storeTestThreadID, storeTestTitle)
+	store.Delete(storeTestThreadID)
 
-	_, exists := store.Get("t-1")
+	_, exists := store.Get(storeTestThreadID)
 	if exists {
-		t.Error("expected thread to be deleted")
+		testing.Error("expected thread to be deleted")
 	}
 }
 
-func TestStoreAll(t *testing.T) {
+func TestStoreAll(testing *testing.T) {
 	store := NewThreadStore()
-	store.Add("t-1", "First")
-	store.Add("t-2", "Second")
+	store.Add(storeTestThreadID, storeTestFirstTitle)
+	store.Add(storeTestSecondID, storeTestSecondTitle)
 
 	all := store.All()
-	if len(all) != 2 {
-		t.Fatalf("expected 2 threads, got %d", len(all))
+	if len(all) != storeTestExpectedTwo {
+		testing.Fatalf("expected 2 threads, got %d", len(all))
 	}
 }
 
-func TestStoreUpdateStatus(t *testing.T) {
+func TestStoreUpdateStatus(testing *testing.T) {
 	store := NewThreadStore()
-	store.Add("t-1", "Test")
-	store.UpdateStatus("t-1", StatusActive, "Running")
+	store.Add(storeTestThreadID, storeTestTitle)
+	store.UpdateStatus(storeTestThreadID, StatusActive, storeTestRunning)
 
-	thread, _ := store.Get("t-1")
+	thread, _ := store.Get(storeTestThreadID)
 	if thread.Status != StatusActive {
-		t.Errorf("expected active, got %s", thread.Status)
+		testing.Errorf("expected active, got %s", thread.Status)
 	}
-	if thread.Title != "Running" {
-		t.Errorf("expected Running, got %s", thread.Title)
+	if thread.Title != storeTestRunning {
+		testing.Errorf("expected Running, got %s", thread.Title)
 	}
 }
 
-func TestStoreUpdateStatusMissing(t *testing.T) {
+func TestStoreUpdateStatusMissing(testing *testing.T) {
 	store := NewThreadStore()
-	store.UpdateStatus("missing", StatusActive, "Test")
+	store.UpdateStatus(storeTestMissingID, StatusActive, storeTestTitle)
 }
 
-func TestStoreIDs(t *testing.T) {
+func TestStoreIDs(testing *testing.T) {
 	store := NewThreadStore()
-	store.Add("t-1", "First")
-	store.Add("t-2", "Second")
+	store.Add(storeTestThreadID, storeTestFirstTitle)
+	store.Add(storeTestSecondID, storeTestSecondTitle)
 
 	ids := store.IDs()
-	if len(ids) != 2 {
-		t.Fatalf("expected 2 ids, got %d", len(ids))
+	if len(ids) != storeTestExpectedTwo {
+		testing.Fatalf("expected 2 ids, got %d", len(ids))
 	}
+}
+
+func TestStoreUpdateActivity(testing *testing.T) {
+	store := NewThreadStore()
+	store.Add(storeTestThreadID, storeTestTitle)
+	store.UpdateActivity(storeTestThreadID, storeTestActivity)
+
+	thread, _ := store.Get(storeTestThreadID)
+	if thread.Activity != storeTestActivity {
+		testing.Errorf("expected %s, got %s", storeTestActivity, thread.Activity)
+	}
+}
+
+func TestStoreUpdateActivityMissing(testing *testing.T) {
+	store := NewThreadStore()
+	store.UpdateActivity(storeTestMissingID, storeTestActivity)
 }
