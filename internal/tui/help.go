@@ -7,16 +7,21 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const helpKeyColumnWidth = 12
+const (
+	helpKeyColumnWidth = 12
+	helpAccentColor    = "39"
+	helpPaddingH       = 2
+	helpNewline        = "\n"
+)
 
 var (
 	helpBorderStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
-			Padding(1, 2)
+			BorderForeground(lipgloss.Color(helpAccentColor)).
+			Padding(1, helpPaddingH)
 	helpTitleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("39")).
+			Foreground(lipgloss.Color(helpAccentColor)).
 			MarginBottom(1)
 	helpKeyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("42")).
@@ -45,6 +50,7 @@ var keybindings = []keybinding{
 	{"Ctrl+B 1-9", "Jump to session pane"},
 	{"Ctrl+B x", "Unpin focused session"},
 	{"Ctrl+B z", "Toggle zoom session"},
+	{"Mouse Wheel", "Scroll session up/down"},
 	{"?", "Toggle help"},
 	{"Ctrl+C", "Quit"},
 }
@@ -65,6 +71,6 @@ func (help HelpModel) View() string {
 		lines = append(lines, fmt.Sprintf("%s %s", key, desc))
 	}
 
-	content := title + "\n" + strings.Join(lines, "\n")
+	content := title + helpNewline + strings.Join(lines, helpNewline)
 	return helpBorderStyle.Render(content)
 }
