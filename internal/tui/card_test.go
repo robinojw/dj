@@ -8,13 +8,19 @@ import (
 )
 
 const (
-	testThreadID     = "t-1"
-	testThreadTitle  = "Test"
-	testBuildTitle   = "Build web app"
-	testActivity     = "Running: git status"
-	testLongActivity = "This is a very long activity string that should definitely be truncated when rendered on a small card"
-	testCardWidth    = 50
-	testCardHeight   = 10
+	testThreadID       = "t-1"
+	testThreadTitle    = "Test"
+	testBuildTitle     = "Build web app"
+	testActivity       = "Running: git status"
+	testLongActivity   = "This is a very long activity string that should definitely be truncated when rendered on a small card"
+	testCardWidth      = 50
+	testCardHeight     = 10
+	testParentThreadID = "t-0"
+	testScoutTitle     = "Scout"
+	testResearcherRole = "researcher"
+	testSubCardWidth   = 30
+	testSubCardHeight  = 6
+	testDepthArrow     = "\u21b3"
 )
 
 func TestCardRenderShowsTitle(testing *testing.T) {
@@ -117,5 +123,45 @@ func TestCardPinnedShowsIndicator(testing *testing.T) {
 
 	if !strings.Contains(output, "✓") {
 		testing.Errorf("expected pinned indicator in output, got:\n%s", output)
+	}
+}
+
+func TestSubAgentCardShowsRole(test *testing.T) {
+	thread := state.NewThreadState(testThreadID, testScoutTitle)
+	thread.ParentID = testParentThreadID
+	thread.AgentRole = testResearcherRole
+
+	card := NewCardModel(thread, false, false)
+	card.SetSize(testSubCardWidth, testSubCardHeight)
+	view := card.View()
+
+	if !strings.Contains(view, testResearcherRole) {
+		test.Error("expected agent role in card view")
+	}
+}
+
+func TestSubAgentCardShowsDepthPrefix(test *testing.T) {
+	thread := state.NewThreadState(testThreadID, testScoutTitle)
+	thread.ParentID = testParentThreadID
+	thread.Depth = 1
+
+	card := NewCardModel(thread, false, false)
+	card.SetSize(testSubCardWidth, testSubCardHeight)
+	view := card.View()
+
+	if !strings.Contains(view, testDepthArrow) {
+		test.Error("expected depth prefix in sub-agent card")
+	}
+}
+
+func TestRootCardNoDepthPrefix(test *testing.T) {
+	thread := state.NewThreadState(testParentThreadID, "Root Session")
+
+	card := NewCardModel(thread, false, false)
+	card.SetSize(testSubCardWidth, testSubCardHeight)
+	view := card.View()
+
+	if strings.Contains(view, testDepthArrow) {
+		test.Error("root card should not have depth prefix")
 	}
 }

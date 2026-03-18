@@ -30,6 +30,8 @@ var (
 )
 
 const pinnedIndicator = " ✓"
+const subAgentPrefix = "↳ "
+const roleIndent = "  "
 
 type CardModel struct {
 	thread   *state.ThreadState
@@ -61,6 +63,33 @@ func (card *CardModel) SetSize(width int, height int) {
 }
 
 func (card CardModel) View() string {
+	title := card.buildTitle()
+	statusLine := card.buildStatusLine()
+	content := card.buildContent(title, statusLine)
+	style := card.buildBorderStyle()
+	return style.Render(content)
+}
+
+func (card CardModel) buildTitle() string {
+	titleMaxLen := card.width - cardBorderPadding
+	if card.pinned {
+		titleMaxLen -= len(pinnedIndicator)
+	}
+
+	title := card.thread.Title
+	isSubAgent := card.thread.ParentID != ""
+	if isSubAgent {
+		title = subAgentPrefix + title
+	}
+
+	title = truncate(title, titleMaxLen)
+	if card.pinned {
+		title += pinnedIndicator
+	}
+	return title
+}
+
+func (card CardModel) buildStatusLine() string {
 	statusColor, exists := statusColors[card.thread.Status]
 	if !exists {
 		statusColor = defaultStatusColor
@@ -72,20 +101,24 @@ func (card CardModel) View() string {
 		secondLine = card.thread.Activity
 	}
 
-	styledSecondLine := lipgloss.NewStyle().
+	return lipgloss.NewStyle().
 		Foreground(statusColor).
 		Render(truncate(secondLine, card.width-cardBorderPadding))
+}
 
-	titleMaxLen := card.width - cardBorderPadding
-	if card.pinned {
-		titleMaxLen -= len(pinnedIndicator)
+func (card CardModel) buildContent(title string, statusLine string) string {
+	isSubAgent := card.thread.ParentID != ""
+	hasRole := isSubAgent && card.thread.AgentRole != ""
+	if hasRole {
+		roleLine := lipgloss.NewStyle().
+			Foreground(colorIdle).
+			Render(roleIndent + card.thread.AgentRole)
+		return fmt.Sprintf("%s\n%s\n%s", title, roleLine, statusLine)
 	}
-	title := truncate(card.thread.Title, titleMaxLen)
-	if card.pinned {
-		title += pinnedIndicator
-	}
-	content := fmt.Sprintf("%s\n%s", title, styledSecondLine)
+	return fmt.Sprintf("%s\n%s", title, statusLine)
+}
 
+func (card CardModel) buildBorderStyle() lipgloss.Style {
 	style := lipgloss.NewStyle().
 		Width(card.width).
 		Height(card.height).
@@ -97,8 +130,7 @@ func (card CardModel) View() string {
 			Border(lipgloss.DoubleBorder()).
 			BorderForeground(lipgloss.Color("39"))
 	}
-
-	return style.Render(content)
+	return style
 }
 
 func truncate(text string, maxLen int) string {
