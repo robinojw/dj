@@ -5,49 +5,43 @@ import (
 	"testing"
 )
 
-func TestProtoEventUnmarshal(t *testing.T) {
-	raw := `{"id":"","msg":{"type":"session_configured","session_id":"s1","model":"o4-mini"}}`
-	var event ProtoEvent
-	if err := json.Unmarshal([]byte(raw), &event); err != nil {
-		t.Fatal(err)
-	}
-	if event.ID != "" {
-		t.Errorf("expected empty id, got %s", event.ID)
-	}
+const unmarshalFailFormat = "unmarshal: %v"
 
-	var header EventHeader
-	if err := json.Unmarshal(event.Msg, &header); err != nil {
-		t.Fatal(err)
+func TestParseNotification(test *testing.T) {
+	raw := `{"jsonrpc":"2.0","method":"thread/started","params":{"thread_id":"t-1"}}`
+	var message JsonRpcMessage
+	if err := json.Unmarshal([]byte(raw), &message); err != nil {
+		test.Fatalf(unmarshalFailFormat, err)
 	}
-	if header.Type != "session_configured" {
-		t.Errorf("expected session_configured, got %s", header.Type)
+	if message.Method != "thread/started" {
+		test.Errorf("expected thread/started, got %s", message.Method)
+	}
+	if message.IsRequest() {
+		test.Error("notification should not be a request")
 	}
 }
 
-func TestProtoEventWithID(t *testing.T) {
-	raw := `{"id":"req-1","msg":{"type":"exec_command_request","command":"ls"}}`
-	var event ProtoEvent
-	if err := json.Unmarshal([]byte(raw), &event); err != nil {
-		t.Fatal(err)
+func TestParseRequest(test *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":"req-1","method":"item/commandExecution/requestApproval","params":{"command":"ls"}}`
+	var message JsonRpcMessage
+	if err := json.Unmarshal([]byte(raw), &message); err != nil {
+		test.Fatalf(unmarshalFailFormat, err)
 	}
-	if event.ID != "req-1" {
-		t.Errorf("expected req-1, got %s", event.ID)
+	if message.ID != "req-1" {
+		test.Errorf("expected req-1, got %s", message.ID)
+	}
+	if !message.IsRequest() {
+		test.Error("should be a request")
 	}
 }
 
-func TestProtoSubmissionMarshal(t *testing.T) {
-	op, _ := json.Marshal(map[string]string{"type": "user_input"})
-	sub := &ProtoSubmission{
-		ID: "dj-1",
-		Op: op,
+func TestParseResponse(test *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":"dj-1","result":{"ok":true}}`
+	var message JsonRpcMessage
+	if err := json.Unmarshal([]byte(raw), &message); err != nil {
+		test.Fatalf(unmarshalFailFormat, err)
 	}
-	data, err := json.Marshal(sub)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var parsed map[string]any
-	json.Unmarshal(data, &parsed)
-	if parsed["id"] != "dj-1" {
-		t.Errorf("expected dj-1, got %v", parsed["id"])
+	if !message.IsResponse() {
+		test.Error("should be a response")
 	}
 }

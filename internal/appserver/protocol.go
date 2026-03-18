@@ -2,21 +2,28 @@ package appserver
 
 import "encoding/json"
 
-// ProtoEvent is an incoming event from the codex proto stream.
-// Format: {"id":"<correlation-id>","msg":{"type":"<event-type>",...}}
-type ProtoEvent struct {
-	ID  string          `json:"id"`
-	Msg json.RawMessage `json:"msg"`
+// JsonRpcMessage represents a JSON-RPC 2.0 message (notification, request, or response).
+type JsonRpcMessage struct {
+	JsonRpc string          `json:"jsonrpc"`
+	ID      string          `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   json.RawMessage `json:"error,omitempty"`
 }
 
-// EventHeader extracts just the type field from a ProtoEvent.Msg payload.
-type EventHeader struct {
-	Type string `json:"type"`
+// IsRequest returns true if this message is a server-to-client request.
+func (message JsonRpcMessage) IsRequest() bool {
+	return message.ID != "" && message.Method != ""
 }
 
-// ProtoSubmission is an outgoing operation sent to codex proto.
-// Format: {"id":"<correlation-id>","op":{"type":"<op-type>",...}}
-type ProtoSubmission struct {
-	ID string          `json:"id"`
-	Op json.RawMessage `json:"op"`
+// IsResponse returns true if this message is a response to a client request.
+func (message JsonRpcMessage) IsResponse() bool {
+	return message.ID != "" && message.Method == ""
 }
+
+// IsNotification returns true if this message is a server notification.
+func (message JsonRpcMessage) IsNotification() bool {
+	return message.ID == "" && message.Method != ""
+}
+
