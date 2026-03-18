@@ -7,12 +7,12 @@ import (
 	"github.com/robinojw/dj/internal/state"
 )
 
-const errExpectedRemaining = "expected %s remaining, got %s"
+const killTestExpectedRemaining = "expected %s remaining, got %s"
 
 func TestAppKillSessionRemovesThread(test *testing.T) {
 	store := state.NewThreadStore()
-	store.Add(testThreadID1, testTitleThread1)
-	store.Add(testThreadID2, testTitleThread2)
+	store.Add(appTestThreadID1, appTestTitleThread1)
+	store.Add(appTestThreadID2, appTestTitleThread2)
 	app := NewAppModel(store)
 
 	kKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
@@ -23,16 +23,16 @@ func TestAppKillSessionRemovesThread(test *testing.T) {
 	if len(threads) != 1 {
 		test.Fatalf("expected 1 thread after kill, got %d", len(threads))
 	}
-	if threads[0].ID != testThreadID2 {
-		test.Errorf(errExpectedRemaining, testThreadID2, threads[0].ID)
+	if threads[0].ID != appTestThreadID2 {
+		test.Errorf(killTestExpectedRemaining, appTestThreadID2, threads[0].ID)
 	}
 	_ = appModel
 }
 
 func TestAppKillSessionStopsPTY(test *testing.T) {
 	store := state.NewThreadStore()
-	store.Add(testThreadID1, testTitleThread1)
-	app := NewAppModel(store, WithInteractiveCommand(testCommandCat))
+	store.Add(appTestThreadID1, appTestTitleThread1)
+	app := NewAppModel(store, WithInteractiveCommand(appTestCmdCat))
 
 	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
 	updated, _ := app.Update(enterKey)
@@ -53,8 +53,8 @@ func TestAppKillSessionStopsPTY(test *testing.T) {
 
 func TestAppKillSessionUnpins(test *testing.T) {
 	store := state.NewThreadStore()
-	store.Add(testThreadID1, testTitleThread1)
-	app := NewAppModel(store, WithInteractiveCommand(testCommandCat))
+	store.Add(appTestThreadID1, appTestTitleThread1)
+	app := NewAppModel(store, WithInteractiveCommand(appTestCmdCat))
 
 	spaceKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}
 	updated, _ := app.Update(spaceKey)
@@ -75,8 +75,8 @@ func TestAppKillSessionUnpins(test *testing.T) {
 
 func TestAppKillSessionClampsSelection(test *testing.T) {
 	store := state.NewThreadStore()
-	store.Add(testThreadID1, testTitleThread1)
-	store.Add(testThreadID2, testTitleThread2)
+	store.Add(appTestThreadID1, appTestTitleThread1)
+	store.Add(appTestThreadID2, appTestTitleThread2)
 	app := NewAppModel(store)
 
 	rightKey := tea.KeyMsg{Type: tea.KeyRight}
@@ -108,8 +108,8 @@ func TestAppKillSessionWithNoThreadsDoesNothing(test *testing.T) {
 
 func TestAppKillSessionReturnsFocusToCanvas(test *testing.T) {
 	store := state.NewThreadStore()
-	store.Add(testThreadID1, testTitleThread1)
-	app := NewAppModel(store, WithInteractiveCommand(testCommandCat))
+	store.Add(appTestThreadID1, appTestTitleThread1)
+	app := NewAppModel(store, WithInteractiveCommand(appTestCmdCat))
 
 	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
 	updated, _ := app.Update(enterKey)
@@ -130,8 +130,8 @@ func TestAppKillSessionReturnsFocusToCanvas(test *testing.T) {
 
 func TestAppKillSessionInTreeMode(test *testing.T) {
 	store := state.NewThreadStore()
-	store.Add(testThreadID1, testThreadTitle1)
-	store.Add(testThreadID2, testThreadTitle2)
+	store.Add(appTestThreadID1, appTestTitleFirst)
+	store.Add(appTestThreadID2, appTestTitleSecond)
 	app := NewAppModel(store)
 
 	tKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}
@@ -150,7 +150,7 @@ func TestAppKillSessionInTreeMode(test *testing.T) {
 	if len(threads) != 1 {
 		test.Fatalf("expected 1 thread after kill in tree mode, got %d", len(threads))
 	}
-	if threads[0].ID != testThreadID1 {
-		test.Errorf(errExpectedRemaining, testThreadID1, threads[0].ID)
+	if threads[0].ID != appTestThreadID1 {
+		test.Errorf(killTestExpectedRemaining, appTestThreadID1, threads[0].ID)
 	}
 }

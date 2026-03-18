@@ -42,7 +42,7 @@ func (canvas *CanvasModel) SelectedIndex() int {
 }
 
 func (canvas *CanvasModel) SelectedThreadID() string {
-	threads := canvas.store.All()
+	threads := canvas.store.TreeOrder()
 	if len(threads) == 0 {
 		return ""
 	}
@@ -50,7 +50,7 @@ func (canvas *CanvasModel) SelectedThreadID() string {
 }
 
 func (canvas *CanvasModel) SetSelected(index int) {
-	threads := canvas.store.All()
+	threads := canvas.store.TreeOrder()
 	isValidIndex := index >= 0 && index < len(threads)
 	if isValidIndex {
 		canvas.selected = index
@@ -70,7 +70,7 @@ func (canvas *CanvasModel) ClampSelected() {
 }
 
 func (canvas *CanvasModel) MoveRight() {
-	threads := canvas.store.All()
+	threads := canvas.store.TreeOrder()
 	if canvas.selected < len(threads)-1 {
 		canvas.selected++
 	}
@@ -83,7 +83,7 @@ func (canvas *CanvasModel) MoveLeft() {
 }
 
 func (canvas *CanvasModel) MoveDown() {
-	threads := canvas.store.All()
+	threads := canvas.store.TreeOrder()
 	next := canvas.selected + canvasColumns
 	if next < len(threads) {
 		canvas.selected = next
@@ -107,7 +107,7 @@ func (canvas *CanvasModel) centerContent(content string) string {
 }
 
 func (canvas *CanvasModel) View() string {
-	threads := canvas.store.All()
+	threads := canvas.store.TreeOrder()
 	if len(threads) == 0 {
 		return canvas.renderEmpty()
 	}

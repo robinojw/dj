@@ -36,6 +36,19 @@ func (store *ThreadStore) AddWithParent(id string, title string, parentID string
 	store.order = append(store.order, id)
 }
 
+func (store *ThreadStore) AddSubAgent(id string, title string, parentID string, nickname string, role string, depth int) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	thread := NewThreadState(id, title)
+	thread.ParentID = parentID
+	thread.AgentNickname = nickname
+	thread.AgentRole = role
+	thread.Depth = depth
+	store.threads[id] = thread
+	store.order = append(store.order, id)
+}
+
 func (store *ThreadStore) Get(id string) (*ThreadState, bool) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
@@ -128,6 +141,32 @@ func (store *ThreadStore) Roots() []*ThreadState {
 		}
 	}
 	return roots
+}
+
+func (store *ThreadStore) TreeOrder() []*ThreadState {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	var result []*ThreadState
+	for _, id := range store.order {
+		thread := store.threads[id]
+		if thread.ParentID == "" {
+			result = append(result, thread)
+			result = store.appendChildrenRecursive(result, id)
+		}
+	}
+	return result
+}
+
+func (store *ThreadStore) appendChildrenRecursive(result []*ThreadState, parentID string) []*ThreadState {
+	for _, id := range store.order {
+		thread := store.threads[id]
+		if thread.ParentID == parentID {
+			result = append(result, thread)
+			result = store.appendChildrenRecursive(result, id)
+		}
+	}
+	return result
 }
 
 func removeFromSlice(slice []string, target string) []string {

@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"fmt"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/internal/appserver"
 	"github.com/robinojw/dj/internal/state"
@@ -30,9 +28,7 @@ type AppModel struct {
 	canvasMode       int
 	width            int
 	height           int
-	sessionID        string
-	currentMessageID string
-	events           chan appserver.ProtoEvent
+	events           chan appserver.JSONRPCMessage
 	ptySessions      map[string]*PTYSession
 	ptyEvents        chan PTYOutputMsg
 	sessionCounter   *int
@@ -50,7 +46,7 @@ func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 		tree:           NewTreeModel(store),
 		prefix:         NewPrefixHandler(),
 		help:           NewHelpModel(),
-		events:         make(chan appserver.ProtoEvent, eventChannelSize),
+		events:         make(chan appserver.JSONRPCMessage, eventChannelSize),
 		ptySessions:    make(map[string]*PTYSession),
 		ptyEvents:      make(chan PTYOutputMsg, eventChannelSize),
 		sessionCounter: new(int),
@@ -109,8 +105,8 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app.handleMouse(msg)
 	case tea.WindowSizeMsg:
 		return app.handleWindowSize(msg)
-	case protoEventMsg:
-		return app.handleProtoEvent(msg.Event)
+	case jsonRPCEventMsg:
+		return app.handleProtoEvent(msg.Message)
 	case PTYOutputMsg:
 		return app.handlePTYOutput(msg)
 	case AppServerErrorMsg:
@@ -140,156 +136,24 @@ func (app AppModel) handleThreadCreated(msg ThreadCreatedMsg) (tea.Model, tea.Cm
 
 func (app AppModel) handleAgentMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case SessionConfiguredMsg:
-		return app.handleSessionConfigured(msg)
-	case TaskStartedMsg:
-		return app.handleTaskStarted()
-	case AgentDeltaMsg:
-		return app.handleAgentDelta(msg)
-	case AgentMessageCompletedMsg:
-		return app.handleAgentMessageCompleted()
-	case TaskCompleteMsg:
-		return app.handleTaskComplete()
-	case ExecApprovalRequestMsg:
-		return app.handleExecApproval(msg)
-	case PatchApprovalRequestMsg:
-		return app.handlePatchApproval(msg)
-	case AgentReasoningDeltaMsg:
-		return app.handleReasoningDelta()
+	case ThreadStartedMsg:
+		return app.handleThreadStarted(msg)
+	case TurnStartedMsg:
+		return app.handleTurnStarted(msg)
+	case TurnCompletedMsg:
+		return app.handleTurnCompleted(msg)
+	case V2AgentDeltaMsg:
+		return app.handleV2AgentDelta(msg)
+	case CollabSpawnMsg:
+		return app.handleCollabSpawn(msg)
+	case CollabCloseMsg:
+		return app.handleCollabClose(msg)
+	case ThreadStatusChangedMsg:
+		return app.handleThreadStatusChanged(msg)
+	case V2ExecApprovalMsg:
+		return app.handleV2ExecApproval(msg)
+	case V2FileApprovalMsg:
+		return app.handleV2FileApproval(msg)
 	}
 	return app, nil
-}
-
-func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if app.helpVisible {
-		return app.handleHelpKey(msg)
-	}
-
-	if app.menuVisible {
-		return app.handleMenuKey(msg)
-	}
-
-	if result, model, cmd := app.handlePrefix(msg); result {
-		return model, cmd
-	}
-
-	if app.focusPane == FocusPaneSession {
-		return app.handleSessionKey(msg)
-	}
-
-	return app.handleCanvasKey(msg)
-}
-
-func (app AppModel) handlePrefix(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
-	prefixResult := app.prefix.HandleKey(msg)
-	switch prefixResult {
-	case PrefixWaiting:
-		return true, app, nil
-	case PrefixComplete:
-		model, cmd := app.handlePrefixAction()
-		return true, model, cmd
-	case PrefixCancelled:
-		return true, app, nil
-	}
-	return false, app, nil
-}
-
-func (app AppModel) handleCanvasKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyCtrlC, tea.KeyEsc:
-		return app, tea.Quit
-	case tea.KeyEnter:
-		return app.openSession()
-	case tea.KeyTab:
-		return app.switchToSessionPanel()
-	case tea.KeyRunes:
-		return app.handleRune(msg)
-	default:
-		return app.handleArrow(msg)
-	}
-}
-
-func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "t":
-		app.toggleCanvasMode()
-	case "n":
-		return app, app.createThread()
-	case "?":
-		app.helpVisible = !app.helpVisible
-	case " ", "s":
-		return app.togglePin()
-	case "k":
-		return app.killSession()
-	}
-	return app, nil
-}
-
-func (app AppModel) createThread() tea.Cmd {
-	*app.sessionCounter++
-	counter := *app.sessionCounter
-	return func() tea.Msg {
-		return ThreadCreatedMsg{
-			ThreadID: fmt.Sprintf("session-%d", counter),
-			Title:    fmt.Sprintf("Session %d", counter),
-		}
-	}
-}
-
-func (app AppModel) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	isToggle := msg.Type == tea.KeyRunes && msg.String() == "?"
-	isEsc := msg.Type == tea.KeyEsc
-	shouldDismissHelp := isToggle || isEsc
-	if shouldDismissHelp {
-		app.helpVisible = false
-	}
-	return app, nil
-}
-
-func (app *AppModel) toggleCanvasMode() {
-	if app.canvasMode == CanvasModeGrid {
-		app.canvasMode = CanvasModeTree
-		return
-	}
-	app.canvasMode = CanvasModeGrid
-}
-
-func (app AppModel) switchToSessionPanel() (tea.Model, tea.Cmd) {
-	hasPinned := len(app.sessionPanel.PinnedSessions()) > 0
-	if !hasPinned {
-		return app, nil
-	}
-	app.focusPane = FocusPaneSession
-	return app, nil
-}
-
-func (app AppModel) handleArrow(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if app.canvasMode == CanvasModeTree {
-		app.handleTreeArrow(msg)
-		return app, nil
-	}
-	app.handleCanvasArrow(msg)
-	return app, nil
-}
-
-func (app *AppModel) handleTreeArrow(msg tea.KeyMsg) {
-	switch msg.Type {
-	case tea.KeyDown:
-		app.tree.MoveDown()
-	case tea.KeyUp:
-		app.tree.MoveUp()
-	}
-}
-
-func (app *AppModel) handleCanvasArrow(msg tea.KeyMsg) {
-	switch msg.Type {
-	case tea.KeyRight:
-		app.canvas.MoveRight()
-	case tea.KeyLeft, tea.KeyShiftTab:
-		app.canvas.MoveLeft()
-	case tea.KeyDown:
-		app.canvas.MoveDown()
-	case tea.KeyUp:
-		app.canvas.MoveUp()
-	}
 }

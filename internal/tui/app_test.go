@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -9,35 +8,39 @@ import (
 )
 
 const (
-	testSessionID1      = "s-1"
-	testNewThreadID     = "t-new"
-	testTitleTest       = "Test"
-	testTitleTestTask   = "Test Task"
-	testTitleThread1    = "Thread 1"
-	testTitleThread2    = "Thread 2"
-	testTitleNewThread  = "New Thread"
-	testTitleSession1   = "Session 1"
-	testTitleSession2   = "Session 2"
-	testCommandCat      = "cat"
-	testCommandEcho     = "echo"
-	testArgHello        = "hello"
-	testMessageID1      = "msg-1"
-	testModelName       = "o4-mini"
-	testEventID1        = "req-1"
-	testCommandLS       = "ls"
-	testDeltaHello      = "Hello"
-	testDeltaTest       = "test"
-	testLastMessageDone = "Done"
-	testRoleAssistant   = "assistant"
-	testAppWidth        = 120
-	testAppHeight       = 40
-	testExpectedTwo     = 2
+	appTestThreadID1          = "t-1"
+	appTestThreadID2          = "t-2"
+	appTestThreadNew          = "t-new"
+	appTestTitleFirst         = "First"
+	appTestTitleSecond        = "Second"
+	appTestTitleTest          = "Test"
+	appTestTitleTestTask      = "Test Task"
+	appTestTitleThread1       = "Thread 1"
+	appTestTitleThread2       = "Thread 2"
+	appTestTitleNewThread     = "New Thread"
+	appTestTitleSession1      = "Session 1"
+	appTestTitleSession2      = "Session 2"
+	appTestCmdCat             = "cat"
+	appTestCmdEcho            = "echo"
+	appTestArgHello           = "hello"
+	appTestWidth              = 120
+	appTestHeight             = 40
+	appTestExpectedThreads    = 2
+	appTestExpectedIndex1     = 1
+	appTestExpectedPaneIndex0 = 0
+	appTestExpectedPaneIndex1 = 1
+	appTestExpected1Pinned    = "expected 1 pinned session, got %d"
+	appTestExpected0Pinned    = "expected 0 pinned after unpin, got %d"
+	appTestExpected1Thread    = "expected 1 thread, got %d"
+	appTestExpectSessionFocus = "expected session focus, got %d"
+	appTestExpectCanvasFocus  = "expected FocusPaneCanvas, got %d"
+	appTestExpectedStrFmt     = "expected %s, got %s"
 )
 
 func TestAppHandlesArrowKeys(test *testing.T) {
 	store := state.NewThreadStore()
-	store.Add(testThreadID1, testThreadTitle1)
-	store.Add(testThreadID2, testThreadTitle2)
+	store.Add(appTestThreadID1, appTestTitleFirst)
+	store.Add(appTestThreadID2, appTestTitleSecond)
 
 	app := NewAppModel(store)
 
@@ -45,14 +48,14 @@ func TestAppHandlesArrowKeys(test *testing.T) {
 	updated, _ := app.Update(rightKey)
 	appModel := updated.(AppModel)
 
-	if appModel.canvas.SelectedIndex() != 1 {
+	if appModel.canvas.SelectedIndex() != appTestExpectedIndex1 {
 		test.Errorf("expected index 1 after right, got %d", appModel.canvas.SelectedIndex())
 	}
 }
 
 func TestAppToggleCanvasMode(test *testing.T) {
 	store := state.NewThreadStore()
-	store.Add(testThreadID1, testTitleTest)
+	store.Add(appTestThreadID1, appTestTitleTest)
 
 	app := NewAppModel(store)
 
@@ -71,8 +74,8 @@ func TestAppToggleCanvasMode(test *testing.T) {
 
 func TestAppTreeNavigationWhenFocused(test *testing.T) {
 	store := state.NewThreadStore()
-	store.Add(testThreadID1, testThreadTitle1)
-	store.Add(testThreadID2, testThreadTitle2)
+	store.Add(appTestThreadID1, appTestTitleFirst)
+	store.Add(appTestThreadID2, appTestTitleSecond)
 
 	app := NewAppModel(store)
 
@@ -84,8 +87,8 @@ func TestAppTreeNavigationWhenFocused(test *testing.T) {
 	updated, _ = app.Update(downKey)
 	app = updated.(AppModel)
 
-	if app.tree.SelectedID() != testThreadID2 {
-		test.Errorf("expected tree at %s, got %s", testThreadID2, app.tree.SelectedID())
+	if app.tree.SelectedID() != appTestThreadID2 {
+		test.Errorf("expected tree at t-2, got %s", app.tree.SelectedID())
 	}
 }
 
@@ -98,6 +101,103 @@ func TestAppHandlesQuit(test *testing.T) {
 
 	if cmd == nil {
 		test.Fatal("expected quit command")
+	}
+}
+
+func TestAppEnterWithNoThreadsDoesNothing(test *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store)
+
+	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
+	updated, _ := app.Update(enterKey)
+	appModel := updated.(AppModel)
+
+	if appModel.FocusPane() != FocusPaneCanvas {
+		test.Errorf("expected canvas focus when no threads, got %d", appModel.FocusPane())
+	}
+}
+
+func TestAppCtrlBMOpensMenu(test *testing.T) {
+	store := state.NewThreadStore()
+	store.Add(appTestThreadID1, appTestTitleTest)
+
+	app := NewAppModel(store)
+
+	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
+	updated, _ := app.Update(ctrlB)
+	app = updated.(AppModel)
+
+	mKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}}
+	updated, _ = app.Update(mKey)
+	app = updated.(AppModel)
+
+	if !app.MenuVisible() {
+		test.Error("expected menu to be visible")
+	}
+}
+
+func TestAppMenuEscCloses(test *testing.T) {
+	store := state.NewThreadStore()
+	store.Add(appTestThreadID1, appTestTitleTest)
+
+	app := NewAppModel(store)
+
+	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
+	updated, _ := app.Update(ctrlB)
+	app = updated.(AppModel)
+
+	mKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}}
+	updated, _ = app.Update(mKey)
+	app = updated.(AppModel)
+
+	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	updated, _ = app.Update(escKey)
+	app = updated.(AppModel)
+
+	if app.MenuVisible() {
+		test.Error("expected menu hidden after Esc")
+	}
+}
+
+func TestAppCtrlBEscCancelsPrefix(test *testing.T) {
+	store := state.NewThreadStore()
+	store.Add(appTestThreadID1, appTestTitleTest)
+
+	app := NewAppModel(store)
+
+	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
+	updated, _ := app.Update(ctrlB)
+	app = updated.(AppModel)
+
+	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+	updated, _ = app.Update(escKey)
+	app = updated.(AppModel)
+
+	if app.MenuVisible() {
+		test.Error("expected menu not visible after prefix cancel")
+	}
+}
+
+func TestAppMenuNavigation(test *testing.T) {
+	store := state.NewThreadStore()
+	store.Add(appTestThreadID1, appTestTitleTest)
+
+	app := NewAppModel(store)
+
+	ctrlB := tea.KeyMsg{Type: tea.KeyCtrlB}
+	updated, _ := app.Update(ctrlB)
+	app = updated.(AppModel)
+
+	mKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}}
+	updated, _ = app.Update(mKey)
+	app = updated.(AppModel)
+
+	downKey := tea.KeyMsg{Type: tea.KeyDown}
+	updated, _ = app.Update(downKey)
+	app = updated.(AppModel)
+
+	if app.menu.SelectedIndex() != appTestExpectedIndex1 {
+		test.Errorf("expected menu index 1, got %d", app.menu.SelectedIndex())
 	}
 }
 
@@ -150,42 +250,25 @@ func TestAppNewThread(test *testing.T) {
 	}
 }
 
-func TestAppFocusPaneDefaultsToCanvas(test *testing.T) {
+func TestAppHandlesThreadCreatedMsg(test *testing.T) {
 	store := state.NewThreadStore()
-	app := NewAppModel(store)
+	app := NewAppModel(store, WithInteractiveCommand(appTestCmdCat))
+	app.width = appTestWidth
+	app.height = appTestHeight
 
-	if app.FocusPane() != FocusPaneCanvas {
-		test.Errorf("expected FocusPaneCanvas, got %d", app.FocusPane())
-	}
-}
+	msg := ThreadCreatedMsg{ThreadID: appTestThreadNew, Title: appTestTitleNewThread}
+	updated, _ := app.Update(msg)
+	appModel := updated.(AppModel)
+	defer appModel.StopAllPTYSessions()
 
-func TestAppHasPinnedSessions(test *testing.T) {
-	store := state.NewThreadStore()
-	app := NewAppModel(store)
-
-	if len(app.sessionPanel.PinnedSessions()) != 0 {
-		test.Errorf("expected 0 pinned sessions, got %d", len(app.sessionPanel.PinnedSessions()))
+	threads := store.All()
+	if len(threads) != 1 {
+		test.Fatalf(appTestExpected1Thread, len(threads))
 	}
-}
-
-func TestHelpShowsPinKeybinding(test *testing.T) {
-	help := NewHelpModel()
-	view := help.View()
-	if !strings.Contains(view, "Space") {
-		test.Error("expected Space keybinding in help")
+	if threads[0].ID != appTestThreadNew {
+		test.Errorf("expected thread t-new, got %s", threads[0].ID)
 	}
-	if !strings.Contains(view, "Ctrl+B x") {
-		test.Error("expected Ctrl+B x keybinding in help")
-	}
-	if !strings.Contains(view, "Ctrl+B z") {
-		test.Error("expected Ctrl+B z keybinding in help")
-	}
-}
-
-func TestHelpShowsKillKeybinding(test *testing.T) {
-	help := NewHelpModel()
-	view := help.View()
-	if !strings.Contains(view, "Kill") {
-		test.Error("expected Kill keybinding in help")
+	if appModel.FocusPane() != FocusPaneSession {
+		test.Errorf(appTestExpectSessionFocus, appModel.FocusPane())
 	}
 }

@@ -11,37 +11,39 @@ import (
 	"github.com/robinojw/dj/internal/state"
 )
 
-func TestIntegrationEndToEnd(t *testing.T) {
+const integrationTimeout = 15 * time.Second
+
+func TestIntegrationEndToEnd(test *testing.T) {
 	client := appserver.NewClient("codex", "proto")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), integrationTimeout)
 	defer cancel()
 
 	if err := client.Start(ctx); err != nil {
-		t.Fatalf("Start failed: %v", err)
+		test.Fatalf("Start failed: %v", err)
 	}
 	defer client.Stop()
 
 	store := state.NewThreadStore()
-	events := make(chan SessionConfiguredMsg, 1)
+	events := make(chan ThreadStartedMsg, 1)
 
-	go client.ReadLoop(func(event appserver.ProtoEvent) {
-		msg := ProtoEventToMsg(event)
-		if configured, ok := msg.(SessionConfiguredMsg); ok {
-			store.Add(configured.SessionID, configured.Model)
-			events <- configured
+	go client.ReadLoop(func(message appserver.JSONRPCMessage) {
+		msg := V2MessageToMsg(message)
+		if started, ok := msg.(ThreadStartedMsg); ok {
+			store.Add(started.ThreadID, started.ThreadID)
+			events <- started
 		}
 	})
 
 	select {
-	case configured := <-events:
-		t.Logf("Connected: session %s, model %s", configured.SessionID, configured.Model)
+	case started := <-events:
+		test.Logf("Connected: thread %s started", started.ThreadID)
 	case <-ctx.Done():
-		t.Fatal("timeout waiting for session_configured")
+		test.Fatal("timeout waiting for thread_started")
 	}
 
 	threads := store.All()
 	if len(threads) != 1 {
-		t.Fatalf("expected 1 thread, got %d", len(threads))
+		test.Fatalf("expected 1 thread, got %d", len(threads))
 	}
 }

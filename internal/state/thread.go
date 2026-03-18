@@ -19,6 +19,9 @@ type ThreadState struct {
 	Status        string
 	Activity      string
 	ParentID      string
+	AgentNickname string
+	AgentRole     string
+	Depth         int
 	Messages      []ChatMessage
 	CommandOutput map[string]string
 }
