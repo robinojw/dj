@@ -14,7 +14,7 @@ const (
 )
 
 func TestMsgTypes(test *testing.T) {
-	errorMsg := AppServerErrorMsg{Err: fmt.Errorf(msgsTestError)}
+	errorMsg := AppServerErrorMsg{Err: fmt.Errorf("%s", msgsTestError)}
 	if errorMsg.Error() != msgsTestError {
 		test.Errorf("expected test error, got %s", errorMsg.Error())
 	}

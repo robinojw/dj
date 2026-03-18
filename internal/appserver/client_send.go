@@ -6,12 +6,12 @@ import (
 )
 
 // Send writes a JSON-RPC request to the child's stdin as a JSONL line.
-func (client *Client) Send(request *JsonRpcRequest) error {
+func (client *Client) Send(request *JSONRPCRequest) error {
 	return client.writeJSON(request)
 }
 
 // SendResponse writes a JSON-RPC response to the child's stdin as a JSONL line.
-func (client *Client) SendResponse(response *JsonRpcResponse) error {
+func (client *Client) SendResponse(response *JSONRPCResponse) error {
 	return client.writeJSON(response)
 }
 
@@ -32,8 +32,8 @@ func (client *Client) writeJSON(payload interface{}) error {
 // SendUserInput sends a text message via turn/start.
 func (client *Client) SendUserInput(text string) (string, error) {
 	requestID := client.NextID()
-	request := &JsonRpcRequest{
-		jsonRpcOutgoing: jsonRpcOutgoing{JsonRpc: jsonRpcVersion, ID: requestID},
+	request := &JSONRPCRequest{
+		jsonRPCOutgoing: jsonRPCOutgoing{JSONRPC: jsonRPCVersion, ID: requestID},
 		Method:          MethodTurnStart,
 		Params:          map[string]string{"message": text},
 	}
@@ -43,8 +43,8 @@ func (client *Client) SendUserInput(text string) (string, error) {
 // SendInterrupt sends a turn/interrupt request.
 func (client *Client) SendInterrupt() error {
 	requestID := client.NextID()
-	request := &JsonRpcRequest{
-		jsonRpcOutgoing: jsonRpcOutgoing{JsonRpc: jsonRpcVersion, ID: requestID},
+	request := &JSONRPCRequest{
+		jsonRPCOutgoing: jsonRPCOutgoing{JSONRPC: jsonRPCVersion, ID: requestID},
 		Method:          MethodTurnInterrupt,
 	}
 	return client.Send(request)
@@ -52,8 +52,8 @@ func (client *Client) SendInterrupt() error {
 
 // SendApproval responds to a server approval request.
 func (client *Client) SendApproval(requestID string, approved bool) error {
-	response := &JsonRpcResponse{
-		jsonRpcOutgoing: jsonRpcOutgoing{JsonRpc: jsonRpcVersion, ID: requestID},
+	response := &JSONRPCResponse{
+		jsonRPCOutgoing: jsonRPCOutgoing{JSONRPC: jsonRPCVersion, ID: requestID},
 		Result:          map[string]bool{"approved": approved},
 	}
 	return client.SendResponse(response)

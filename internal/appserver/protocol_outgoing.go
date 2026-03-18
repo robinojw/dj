@@ -1,19 +1,19 @@
 package appserver
 
-type jsonRpcOutgoing struct {
-	JsonRpc string `json:"jsonrpc"`
+type jsonRPCOutgoing struct {
+	JSONRPC string `json:"jsonrpc"`
 	ID      string `json:"id"`
 }
 
-// JsonRpcRequest is an outgoing client-to-server request.
-type JsonRpcRequest struct {
-	jsonRpcOutgoing
+// JSONRPCRequest is an outgoing client-to-server request.
+type JSONRPCRequest struct {
+	jsonRPCOutgoing
 	Method string      `json:"method"`
 	Params interface{} `json:"params,omitempty"`
 }
 
-// JsonRpcResponse is an outgoing client response to a server request.
-type JsonRpcResponse struct {
-	jsonRpcOutgoing
+// JSONRPCResponse is an outgoing client response to a server request.
+type JSONRPCResponse struct {
+	jsonRPCOutgoing
 	Result interface{} `json:"result"`
 }

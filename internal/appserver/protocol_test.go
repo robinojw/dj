@@ -9,7 +9,7 @@ const unmarshalFailFormat = "unmarshal: %v"
 
 func TestParseNotification(test *testing.T) {
 	raw := `{"jsonrpc":"2.0","method":"thread/started","params":{"thread_id":"t-1"}}`
-	var message JsonRpcMessage
+	var message JSONRPCMessage
 	if err := json.Unmarshal([]byte(raw), &message); err != nil {
 		test.Fatalf(unmarshalFailFormat, err)
 	}
@@ -23,7 +23,7 @@ func TestParseNotification(test *testing.T) {
 
 func TestParseRequest(test *testing.T) {
 	raw := `{"jsonrpc":"2.0","id":"req-1","method":"item/commandExecution/requestApproval","params":{"command":"ls"}}`
-	var message JsonRpcMessage
+	var message JSONRPCMessage
 	if err := json.Unmarshal([]byte(raw), &message); err != nil {
 		test.Fatalf(unmarshalFailFormat, err)
 	}
@@ -37,7 +37,7 @@ func TestParseRequest(test *testing.T) {
 
 func TestParseResponse(test *testing.T) {
 	raw := `{"jsonrpc":"2.0","id":"dj-1","result":{"ok":true}}`
-	var message JsonRpcMessage
+	var message JSONRPCMessage
 	if err := json.Unmarshal([]byte(raw), &message); err != nil {
 		test.Fatalf(unmarshalFailFormat, err)
 	}

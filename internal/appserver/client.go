@@ -13,7 +13,7 @@ import (
 
 const scannerBufferSize = 1024 * 1024
 
-const jsonRpcVersion = "2.0"
+const jsonRPCVersion = "2.0"
 
 // Client manages a child codex proto process and bidirectional communication.
 type Client struct {
@@ -30,7 +30,7 @@ type Client struct {
 	nextID  atomic.Int64
 	running atomic.Bool
 
-	OnEvent  func(message JsonRpcMessage)
+	OnEvent  func(message JSONRPCMessage)
 	OnStderr func(line string)
 }
 
@@ -124,14 +124,14 @@ func (client *Client) NextID() string {
 }
 
 // ReadLoop reads JSONL messages from stdout and dispatches each to the handler.
-func (client *Client) ReadLoop(handler func(JsonRpcMessage)) {
+func (client *Client) ReadLoop(handler func(JSONRPCMessage)) {
 	for client.scanner.Scan() {
 		line := client.scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
 
-		var message JsonRpcMessage
+		var message JSONRPCMessage
 		if err := json.Unmarshal(line, &message); err != nil {
 			continue
 		}

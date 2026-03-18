@@ -14,7 +14,7 @@ const (
 )
 
 func TestBridgeV2ThreadStarted(test *testing.T) {
-	message := appserver.JsonRpcMessage{
+	message := appserver.JSONRPCMessage{
 		Method: appserver.MethodThreadStarted,
 		Params: json.RawMessage(`{"thread":{"id":"t-1","status":"idle","source":{"type":"cli"}}}`),
 	}
@@ -29,7 +29,7 @@ func TestBridgeV2ThreadStarted(test *testing.T) {
 }
 
 func TestBridgeV2SubAgentThread(test *testing.T) {
-	message := appserver.JsonRpcMessage{
+	message := appserver.JSONRPCMessage{
 		Method: appserver.MethodThreadStarted,
 		Params: json.RawMessage(`{"thread":{"id":"t-2","status":"idle","source":{"type":"sub_agent","parent_thread_id":"t-1","depth":1,"agent_nickname":"scout","agent_role":"researcher"}}}`),
 	}
@@ -47,7 +47,7 @@ func TestBridgeV2SubAgentThread(test *testing.T) {
 }
 
 func TestBridgeV2TurnStarted(test *testing.T) {
-	message := appserver.JsonRpcMessage{
+	message := appserver.JSONRPCMessage{
 		Method: appserver.MethodTurnStarted,
 		Params: json.RawMessage(`{"thread_id":"t-1","turn":{"id":"turn-1","status":"in_progress"}}`),
 	}
@@ -62,7 +62,7 @@ func TestBridgeV2TurnStarted(test *testing.T) {
 }
 
 func TestBridgeV2AgentDelta(test *testing.T) {
-	message := appserver.JsonRpcMessage{
+	message := appserver.JSONRPCMessage{
 		Method: appserver.MethodAgentMessageDelta,
 		Params: json.RawMessage(`{"thread_id":"t-1","delta":"hello"}`),
 	}
@@ -77,7 +77,7 @@ func TestBridgeV2AgentDelta(test *testing.T) {
 }
 
 func TestBridgeV2UnknownMethodReturnsNil(test *testing.T) {
-	message := appserver.JsonRpcMessage{
+	message := appserver.JSONRPCMessage{
 		Method: "some/unknown/method",
 	}
 	msg := V2MessageToMsg(message)

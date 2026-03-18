@@ -56,13 +56,13 @@ func TestClientSendAndReadLoop(test *testing.T) {
 	}
 	defer client.Stop()
 
-	messages := make(chan JsonRpcMessage, clientTestChannelSize)
-	go client.ReadLoop(func(message JsonRpcMessage) {
+	messages := make(chan JSONRPCMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JSONRPCMessage) {
 		messages <- message
 	})
 
-	request := &JsonRpcRequest{
-		jsonRpcOutgoing: jsonRpcOutgoing{JsonRpc: jsonRpcVersion, ID: clientTestSendID},
+	request := &JSONRPCRequest{
+		jsonRPCOutgoing: jsonRPCOutgoing{JSONRPC: jsonRPCVersion, ID: clientTestSendID},
 		Method:          MethodTurnStart,
 	}
 	if err := client.Send(request); err != nil {
@@ -105,8 +105,8 @@ func TestClientSendUserInput(test *testing.T) {
 	}
 	defer client.Stop()
 
-	messages := make(chan JsonRpcMessage, clientTestChannelSize)
-	go client.ReadLoop(func(message JsonRpcMessage) {
+	messages := make(chan JSONRPCMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JSONRPCMessage) {
 		messages <- message
 	})
 
@@ -140,8 +140,8 @@ func TestReadLoopParsesV2Notification(test *testing.T) {
 	client.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
 	client.running.Store(true)
 
-	messages := make(chan JsonRpcMessage, clientTestChannelSize)
-	go client.ReadLoop(func(message JsonRpcMessage) {
+	messages := make(chan JSONRPCMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JSONRPCMessage) {
 		messages <- message
 	})
 
@@ -169,8 +169,8 @@ func TestReadLoopParsesV2Request(test *testing.T) {
 	client.scanner.Buffer(make([]byte, scannerBufferSize), scannerBufferSize)
 	client.running.Store(true)
 
-	messages := make(chan JsonRpcMessage, clientTestChannelSize)
-	go client.ReadLoop(func(message JsonRpcMessage) {
+	messages := make(chan JSONRPCMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JSONRPCMessage) {
 		messages <- message
 	})
 
@@ -203,8 +203,8 @@ func TestClientSendApproval(test *testing.T) {
 	}
 	defer client.Stop()
 
-	messages := make(chan JsonRpcMessage, clientTestChannelSize)
-	go client.ReadLoop(func(message JsonRpcMessage) {
+	messages := make(chan JSONRPCMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JSONRPCMessage) {
 		messages <- message
 	})
 

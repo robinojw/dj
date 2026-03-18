@@ -22,8 +22,8 @@ func TestIntegrationV2Connect(test *testing.T) {
 	}
 	defer client.Stop()
 
-	events := make(chan JsonRpcMessage, integrationEventBuffer)
-	go client.ReadLoop(func(message JsonRpcMessage) {
+	events := make(chan JSONRPCMessage, integrationEventBuffer)
+	go client.ReadLoop(func(message JSONRPCMessage) {
 		events <- message
 	})
 

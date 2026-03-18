@@ -6,7 +6,7 @@ import (
 )
 
 // V2MessageToMsg routes a JSON-RPC message by method to the appropriate Bubble Tea message.
-func V2MessageToMsg(message appserver.JsonRpcMessage) tea.Msg {
+func V2MessageToMsg(message appserver.JSONRPCMessage) tea.Msg {
 	switch message.Method {
 	case appserver.MethodThreadStarted:
 		return decodeThreadStarted(message.Params)

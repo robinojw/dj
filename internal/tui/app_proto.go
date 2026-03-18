@@ -15,8 +15,8 @@ const (
 	activitySnippetMaxLen = 40
 )
 
-type jsonRpcEventMsg struct {
-	Message appserver.JsonRpcMessage
+type jsonRPCEventMsg struct {
+	Message appserver.JSONRPCMessage
 }
 
 func (app AppModel) connectClient() tea.Cmd {
@@ -25,7 +25,7 @@ func (app AppModel) connectClient() tea.Cmd {
 		if err := app.client.Start(ctx); err != nil {
 			return AppServerErrorMsg{Err: err}
 		}
-		go app.client.ReadLoop(func(message appserver.JsonRpcMessage) {
+		go app.client.ReadLoop(func(message appserver.JSONRPCMessage) {
 			app.events <- message
 		})
 		return nil
@@ -38,11 +38,11 @@ func (app AppModel) listenForEvents() tea.Cmd {
 		if !ok {
 			return AppServerErrorMsg{Err: fmt.Errorf("connection closed")}
 		}
-		return jsonRpcEventMsg{Message: message}
+		return jsonRPCEventMsg{Message: message}
 	}
 }
 
-func (app AppModel) handleProtoEvent(message appserver.JsonRpcMessage) (tea.Model, tea.Cmd) {
+func (app AppModel) handleProtoEvent(message appserver.JSONRPCMessage) (tea.Model, tea.Cmd) {
 	tuiMsg := V2MessageToMsg(message)
 	if tuiMsg == nil {
 		return app, app.listenForEvents()

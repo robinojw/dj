@@ -7,7 +7,7 @@ import (
 	"github.com/robinojw/dj/internal/appserver"
 )
 
-func decodeV2ExecApproval(message appserver.JsonRpcMessage) tea.Msg {
+func decodeV2ExecApproval(message appserver.JSONRPCMessage) tea.Msg {
 	var request appserver.CommandApprovalRequest
 	if err := json.Unmarshal(message.Params, &request); err != nil {
 		return nil
@@ -20,7 +20,7 @@ func decodeV2ExecApproval(message appserver.JsonRpcMessage) tea.Msg {
 	}
 }
 
-func decodeV2FileApproval(message appserver.JsonRpcMessage) tea.Msg {
+func decodeV2FileApproval(message appserver.JSONRPCMessage) tea.Msg {
 	var request appserver.FileChangeApprovalRequest
 	if err := json.Unmarshal(message.Params, &request); err != nil {
 		return nil

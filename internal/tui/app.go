@@ -28,7 +28,7 @@ type AppModel struct {
 	canvasMode       int
 	width            int
 	height           int
-	events           chan appserver.JsonRpcMessage
+	events           chan appserver.JSONRPCMessage
 	ptySessions      map[string]*PTYSession
 	ptyEvents        chan PTYOutputMsg
 	sessionCounter   *int
@@ -46,7 +46,7 @@ func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 		tree:           NewTreeModel(store),
 		prefix:         NewPrefixHandler(),
 		help:           NewHelpModel(),
-		events:         make(chan appserver.JsonRpcMessage, eventChannelSize),
+		events:         make(chan appserver.JSONRPCMessage, eventChannelSize),
 		ptySessions:    make(map[string]*PTYSession),
 		ptyEvents:      make(chan PTYOutputMsg, eventChannelSize),
 		sessionCounter: new(int),
@@ -105,7 +105,7 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app.handleMouse(msg)
 	case tea.WindowSizeMsg:
 		return app.handleWindowSize(msg)
-	case jsonRpcEventMsg:
+	case jsonRPCEventMsg:
 		return app.handleProtoEvent(msg.Message)
 	case PTYOutputMsg:
 		return app.handlePTYOutput(msg)

@@ -27,7 +27,7 @@ func TestIntegrationEndToEnd(test *testing.T) {
 	store := state.NewThreadStore()
 	events := make(chan ThreadStartedMsg, 1)
 
-	go client.ReadLoop(func(message appserver.JsonRpcMessage) {
+	go client.ReadLoop(func(message appserver.JSONRPCMessage) {
 		msg := V2MessageToMsg(message)
 		if started, ok := msg.(ThreadStartedMsg); ok {
 			store.Add(started.ThreadID, started.ThreadID)
