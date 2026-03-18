@@ -362,11 +362,14 @@ func TestAppNewThread(t *testing.T) {
 
 func TestAppHandlesThreadCreatedMsg(t *testing.T) {
 	store := state.NewThreadStore()
-	app := NewAppModel(store)
+	app := NewAppModel(store, WithInteractiveCommand("cat"))
+	app.width = 120
+	app.height = 40
 
 	msg := ThreadCreatedMsg{ThreadID: "t-new", Title: "New Thread"}
 	updated, _ := app.Update(msg)
-	_ = updated.(AppModel)
+	appModel := updated.(AppModel)
+	defer appModel.StopAllPTYSessions()
 
 	threads := store.All()
 	if len(threads) != 1 {
@@ -374,6 +377,9 @@ func TestAppHandlesThreadCreatedMsg(t *testing.T) {
 	}
 	if threads[0].ID != "t-new" {
 		t.Errorf("expected thread t-new, got %s", threads[0].ID)
+	}
+	if appModel.FocusPane() != FocusPaneSession {
+		t.Errorf("expected session focus, got %d", appModel.FocusPane())
 	}
 }
 
@@ -669,5 +675,75 @@ func TestAppHasPinnedSessions(t *testing.T) {
 
 	if len(app.sessionPanel.PinnedSessions()) != 0 {
 		t.Errorf("expected 0 pinned sessions, got %d", len(app.sessionPanel.PinnedSessions()))
+	}
+}
+
+func TestAppNewThreadCreatesAndOpensSession(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store, WithInteractiveCommand("cat"))
+	app.width = 120
+	app.height = 40
+
+	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	updated, cmd := app.Update(nKey)
+	app = updated.(AppModel)
+
+	if cmd == nil {
+		t.Fatal("expected command from n key")
+	}
+
+	msg := cmd()
+	updated, _ = app.Update(msg)
+	app = updated.(AppModel)
+	defer app.StopAllPTYSessions()
+
+	threads := store.All()
+	if len(threads) != 1 {
+		t.Fatalf("expected 1 thread, got %d", len(threads))
+	}
+
+	if app.FocusPane() != FocusPaneSession {
+		t.Errorf("expected session focus after new thread, got %d", app.FocusPane())
+	}
+
+	if len(app.sessionPanel.PinnedSessions()) != 1 {
+		t.Errorf("expected 1 pinned session, got %d", len(app.sessionPanel.PinnedSessions()))
+	}
+}
+
+func TestAppNewThreadIncrementsTitle(t *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store, WithInteractiveCommand("cat"))
+	app.width = 120
+	app.height = 40
+
+	nKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	escKey := tea.KeyMsg{Type: tea.KeyEsc}
+
+	updated, cmd := app.Update(nKey)
+	app = updated.(AppModel)
+	msg := cmd()
+	updated, _ = app.Update(msg)
+	app = updated.(AppModel)
+
+	updated, _ = app.Update(escKey)
+	app = updated.(AppModel)
+
+	updated, cmd = app.Update(nKey)
+	app = updated.(AppModel)
+	msg = cmd()
+	updated, _ = app.Update(msg)
+	app = updated.(AppModel)
+	defer app.StopAllPTYSessions()
+
+	threads := store.All()
+	if len(threads) != 2 {
+		t.Fatalf("expected 2 threads, got %d", len(threads))
+	}
+	if threads[0].Title != "Session 1" {
+		t.Errorf("expected 'Session 1', got %s", threads[0].Title)
+	}
+	if threads[1].Title != "Session 2" {
+		t.Errorf("expected 'Session 2', got %s", threads[1].Title)
 	}
 }
