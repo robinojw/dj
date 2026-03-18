@@ -5,8 +5,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 )
@@ -161,7 +163,34 @@ func (ps *PTYSession) Resize(width int, height int) {
 }
 
 func (ps *PTYSession) Render() string {
-	return ps.emulator.Render()
+	ps.mu.Lock()
+	offset := ps.scrollOffset
+	ps.mu.Unlock()
+
+	if offset == 0 {
+		return ps.emulator.Render()
+	}
+
+	return ps.renderScrolled(offset)
+}
+
+func (ps *PTYSession) renderScrolled(offset int) string {
+	scrollback := ps.emulator.Scrollback()
+	scrollbackLen := scrollback.Len()
+	scrollbackLines := make([]uv.Line, scrollbackLen)
+	for index := 0; index < scrollbackLen; index++ {
+		scrollbackLines[index] = scrollback.Line(index)
+	}
+
+	screenContent := ps.emulator.Render()
+	screenLines := strings.Split(screenContent, "\n")
+
+	return renderScrolledOutput(
+		scrollbackLines,
+		screenLines,
+		ps.emulator.Height(),
+		offset,
+	)
 }
 
 func (ps *PTYSession) Stop() {
