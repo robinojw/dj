@@ -181,3 +181,11 @@ func TestHelpShowsPinKeybinding(test *testing.T) {
 		test.Error("expected Ctrl+B z keybinding in help")
 	}
 }
+
+func TestHelpShowsKillKeybinding(test *testing.T) {
+	help := NewHelpModel()
+	view := help.View()
+	if !strings.Contains(view, "Kill") {
+		test.Error("expected Kill keybinding in help")
+	}
+}
