@@ -20,6 +20,16 @@ const (
 	storeTestRole        = "researcher"
 	storeTestChildNotFnd = "child not found"
 	storeTestExpectedTwo = 2
+	storeTestPositionFmt = "position %d: expected %s, got %s"
+
+	treeTestRoot1      = "root-1"
+	treeTestRoot2      = "root-2"
+	treeTestChild1a    = "child-1a"
+	treeTestChild1b    = "child-1b"
+	treeTestChild2a    = "child-2a"
+	treeTestRootID     = "root"
+	treeTestChildID    = "child"
+	treeTestGrandChild = "grandchild"
 )
 
 func TestStoreAddAndGet(test *testing.T) {
@@ -126,6 +136,41 @@ func TestAddSubAgent(test *testing.T) {
 	}
 	if child.Depth != 1 {
 		test.Errorf("expected depth 1, got %d", child.Depth)
+	}
+}
+
+func TestTreeOrder(test *testing.T) {
+	store := NewThreadStore()
+	store.Add(treeTestRoot1, "Root 1")
+	store.Add(treeTestRoot2, "Root 2")
+	store.AddWithParent(treeTestChild1a, "Child 1a", treeTestRoot1)
+	store.AddWithParent(treeTestChild1b, "Child 1b", treeTestRoot1)
+	store.AddWithParent(treeTestChild2a, "Child 2a", treeTestRoot2)
+
+	ordered := store.TreeOrder()
+	expectedOrder := []string{treeTestRoot1, treeTestChild1a, treeTestChild1b, treeTestRoot2, treeTestChild2a}
+	if len(ordered) != len(expectedOrder) {
+		test.Fatalf("expected %d threads, got %d", len(expectedOrder), len(ordered))
+	}
+	for index, thread := range ordered {
+		if thread.ID != expectedOrder[index] {
+			test.Errorf(storeTestPositionFmt, index, expectedOrder[index], thread.ID)
+		}
+	}
+}
+
+func TestTreeOrderNestedChildren(test *testing.T) {
+	store := NewThreadStore()
+	store.Add(treeTestRootID, storeTestTitleRoot)
+	store.AddWithParent(treeTestChildID, storeTestTitleChild, treeTestRootID)
+	store.AddWithParent(treeTestGrandChild, "Grandchild", treeTestChildID)
+
+	ordered := store.TreeOrder()
+	expectedOrder := []string{treeTestRootID, treeTestChildID, treeTestGrandChild}
+	for index, thread := range ordered {
+		if thread.ID != expectedOrder[index] {
+			test.Errorf(storeTestPositionFmt, index, expectedOrder[index], thread.ID)
+		}
 	}
 }
 

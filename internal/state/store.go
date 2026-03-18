@@ -143,6 +143,32 @@ func (store *ThreadStore) Roots() []*ThreadState {
 	return roots
 }
 
+func (store *ThreadStore) TreeOrder() []*ThreadState {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	var result []*ThreadState
+	for _, id := range store.order {
+		thread := store.threads[id]
+		if thread.ParentID == "" {
+			result = append(result, thread)
+			result = store.appendChildrenRecursive(result, id)
+		}
+	}
+	return result
+}
+
+func (store *ThreadStore) appendChildrenRecursive(result []*ThreadState, parentID string) []*ThreadState {
+	for _, id := range store.order {
+		thread := store.threads[id]
+		if thread.ParentID == parentID {
+			result = append(result, thread)
+			result = store.appendChildrenRecursive(result, id)
+		}
+	}
+	return result
+}
+
 func removeFromSlice(slice []string, target string) []string {
 	result := make([]string, 0, len(slice))
 	for _, item := range slice {
