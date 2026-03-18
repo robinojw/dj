@@ -79,6 +79,43 @@ func (app AppModel) openSession() (tea.Model, tea.Cmd) {
 	return app, app.rebalancePTYSizes()
 }
 
+func (app AppModel) selectedThreadID() string {
+	if app.canvasMode == CanvasModeTree {
+		return app.tree.SelectedID()
+	}
+	return app.canvas.SelectedThreadID()
+}
+
+func (app AppModel) killSession() (tea.Model, tea.Cmd) {
+	threadID := app.selectedThreadID()
+	if threadID == "" {
+		return app, nil
+	}
+
+	app.stopAndRemovePTY(threadID)
+	app.sessionPanel.Unpin(threadID)
+	app.store.Delete(threadID)
+	app.canvas.ClampSelected()
+	app.tree.Refresh()
+	app.statusBar.SetThreadCount(len(app.store.All()))
+
+	hasPinned := len(app.sessionPanel.PinnedSessions()) > 0
+	if !hasPinned {
+		app.focusPane = FocusPaneCanvas
+	}
+
+	return app, app.rebalancePTYSizes()
+}
+
+func (app *AppModel) stopAndRemovePTY(threadID string) {
+	ptySession, exists := app.ptySessions[threadID]
+	if !exists {
+		return
+	}
+	ptySession.Stop()
+	delete(app.ptySessions, threadID)
+}
+
 func (app AppModel) togglePin() (tea.Model, tea.Cmd) {
 	threadID := app.canvas.SelectedThreadID()
 	if threadID == "" {

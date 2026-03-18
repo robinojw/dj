@@ -219,6 +219,8 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		app.helpVisible = !app.helpVisible
 	case " ", "s":
 		return app.togglePin()
+	case "k":
+		return app.killSession()
 	}
 	return app, nil
 }
