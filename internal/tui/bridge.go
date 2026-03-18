@@ -25,6 +25,8 @@ func ProtoEventToMsg(event appserver.ProtoEvent) tea.Msg {
 		return decodeAgentDelta(event.Msg)
 	case appserver.EventAgentMessage:
 		return decodeAgentMessage(event.Msg)
+	case appserver.EventAgentReasonDelta:
+		return decodeReasoningDelta(event.Msg)
 	case appserver.EventExecApproval:
 		return decodeExecApproval(event)
 	case appserver.EventPatchApproval:
@@ -66,6 +68,14 @@ func decodeAgentMessage(raw json.RawMessage) tea.Msg {
 		return nil
 	}
 	return AgentMessageCompletedMsg{Message: msg.Message}
+}
+
+func decodeReasoningDelta(raw json.RawMessage) tea.Msg {
+	var delta appserver.AgentDelta
+	if err := json.Unmarshal(raw, &delta); err != nil {
+		return nil
+	}
+	return AgentReasoningDeltaMsg{Delta: delta.Delta}
 }
 
 func decodeExecApproval(event appserver.ProtoEvent) tea.Msg {

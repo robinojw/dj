@@ -17,6 +17,7 @@ type ThreadState struct {
 	ID            string
 	Title         string
 	Status        string
+	Activity      string
 	ParentID      string
 	Messages      []ChatMessage
 	CommandOutput map[string]string
@@ -47,4 +48,12 @@ func (threadState *ThreadState) AppendDelta(messageID string, delta string) {
 
 func (threadState *ThreadState) AppendOutput(execID string, data string) {
 	threadState.CommandOutput[execID] += data
+}
+
+func (threadState *ThreadState) SetActivity(activity string) {
+	threadState.Activity = activity
+}
+
+func (threadState *ThreadState) ClearActivity() {
+	threadState.Activity = ""
 }

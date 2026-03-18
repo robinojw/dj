@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	minCardWidth       = 20
-	maxCardWidth       = 50
-	minCardHeight      = 4
-	maxCardHeight      = 12
-	cardBorderPadding  = 4
+	minCardWidth        = 20
+	maxCardWidth        = 50
+	minCardHeight       = 4
+	maxCardHeight       = 12
+	cardBorderPadding   = 4
 	truncateEllipsisLen = 3
 )
 
@@ -66,9 +66,15 @@ func (card CardModel) View() string {
 		statusColor = defaultStatusColor
 	}
 
-	statusLine := lipgloss.NewStyle().
+	secondLine := card.thread.Status
+	hasActivity := card.thread.Activity != ""
+	if hasActivity {
+		secondLine = card.thread.Activity
+	}
+
+	styledSecondLine := lipgloss.NewStyle().
 		Foreground(statusColor).
-		Render(card.thread.Status)
+		Render(truncate(secondLine, card.width-cardBorderPadding))
 
 	titleMaxLen := card.width - cardBorderPadding
 	if card.pinned {
@@ -78,7 +84,7 @@ func (card CardModel) View() string {
 	if card.pinned {
 		title += pinnedIndicator
 	}
-	content := fmt.Sprintf("%s\n%s", title, statusLine)
+	content := fmt.Sprintf("%s\n%s", title, styledSecondLine)
 
 	style := lipgloss.NewStyle().
 		Width(card.width).

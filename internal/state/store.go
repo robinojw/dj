@@ -91,6 +91,17 @@ func (store *ThreadStore) UpdateStatus(id string, status string, title string) {
 	}
 }
 
+func (store *ThreadStore) UpdateActivity(id string, activity string) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	thread, exists := store.threads[id]
+	if !exists {
+		return
+	}
+	thread.Activity = activity
+}
+
 func (store *ThreadStore) Children(parentID string) []*ThreadState {
 	store.mu.RLock()
 	defer store.mu.RUnlock()

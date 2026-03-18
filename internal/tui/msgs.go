@@ -19,6 +19,10 @@ type AgentMessageCompletedMsg struct {
 	Message string
 }
 
+type AgentReasoningDeltaMsg struct {
+	Delta string
+}
+
 type ExecApprovalRequestMsg struct {
 	EventID string
 	Command string
