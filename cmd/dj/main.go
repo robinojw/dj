@@ -48,7 +48,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 		tui.WithInteractiveCommand(cfg.Interactive.Command, cfg.Interactive.Args...),
 	)
 
-	program := tea.NewProgram(app, tea.WithAltScreen())
+	program := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	finalModel, err := program.Run()
 
 	if finalApp, ok := finalModel.(tui.AppModel); ok {

@@ -5,8 +5,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 )
@@ -16,6 +18,7 @@ const (
 	defaultTermRows = 24
 	ptyReadBufSize  = 4096
 	ptyTermEnvVar   = "TERM=xterm-256color"
+	scrollStep      = 3
 )
 
 type PTYSessionConfig struct {
@@ -26,16 +29,17 @@ type PTYSessionConfig struct {
 }
 
 type PTYSession struct {
-	threadID string
-	command  string
-	args     []string
-	cmd      *exec.Cmd
-	ptmx     *os.File
-	emulator *vt.SafeEmulator
-	mu       sync.Mutex
-	running  bool
-	exitCode int
-	sendMsg  func(PTYOutputMsg)
+	threadID     string
+	command      string
+	args         []string
+	cmd          *exec.Cmd
+	ptmx         *os.File
+	emulator     *vt.SafeEmulator
+	mu           sync.Mutex
+	running      bool
+	exitCode     int
+	scrollOffset int
+	sendMsg      func(PTYOutputMsg)
 }
 
 func NewPTYSession(config PTYSessionConfig) *PTYSession {
@@ -81,9 +85,9 @@ func (ps *PTYSession) Start() error {
 func (ps *PTYSession) readLoop() {
 	buf := make([]byte, ptyReadBufSize)
 	for {
-		n, err := ps.ptmx.Read(buf)
-		if n > 0 {
-			ps.emulator.Write(buf[:n])
+		bytesRead, err := ps.ptmx.Read(buf)
+		if bytesRead > 0 {
+			ps.emulator.Write(buf[:bytesRead])
 			ps.sendMsg(PTYOutputMsg{ThreadID: ps.threadID})
 		}
 		if err != nil {
@@ -104,20 +108,25 @@ func (ps *PTYSession) readLoop() {
 func (ps *PTYSession) responseLoop() {
 	buf := make([]byte, ptyReadBufSize)
 	for {
-		n, err := ps.emulator.Read(buf)
-		if n > 0 {
-			ps.mu.Lock()
-			ptmx := ps.ptmx
-			ps.mu.Unlock()
-
-			if ptmx != nil {
-				ptmx.Write(buf[:n])
-			}
+		bytesRead, err := ps.emulator.Read(buf)
+		if bytesRead > 0 {
+			ps.writeResponseToPTY(buf[:bytesRead])
 		}
 		if err != nil {
 			return
 		}
 	}
+}
+
+func (ps *PTYSession) writeResponseToPTY(data []byte) {
+	ps.mu.Lock()
+	ptmx := ps.ptmx
+	ps.mu.Unlock()
+
+	if ptmx == nil {
+		return
+	}
+	ptmx.Write(data)
 }
 
 func (ps *PTYSession) WriteBytes(data []byte) error {
@@ -154,7 +163,34 @@ func (ps *PTYSession) Resize(width int, height int) {
 }
 
 func (ps *PTYSession) Render() string {
-	return ps.emulator.Render()
+	ps.mu.Lock()
+	offset := ps.scrollOffset
+	ps.mu.Unlock()
+
+	if offset == 0 {
+		return ps.emulator.Render()
+	}
+
+	return ps.renderScrolled(offset)
+}
+
+func (ps *PTYSession) renderScrolled(offset int) string {
+	scrollback := ps.emulator.Scrollback()
+	scrollbackLen := scrollback.Len()
+	scrollbackLines := make([]uv.Line, scrollbackLen)
+	for index := 0; index < scrollbackLen; index++ {
+		scrollbackLines[index] = scrollback.Line(index)
+	}
+
+	screenContent := ps.emulator.Render()
+	screenLines := strings.Split(screenContent, "\n")
+
+	return renderScrolledOutput(
+		scrollbackLines,
+		screenLines,
+		ps.emulator.Height(),
+		offset,
+	)
 }
 
 func (ps *PTYSession) Stop() {
@@ -165,7 +201,8 @@ func (ps *PTYSession) Stop() {
 		ps.ptmx.Close()
 	}
 
-	if ps.cmd != nil && ps.cmd.Process != nil {
+	hasProcess := ps.cmd != nil && ps.cmd.Process != nil
+	if hasProcess {
 		ps.cmd.Process.Kill()
 		ps.cmd.Wait()
 	}
@@ -187,6 +224,48 @@ func (ps *PTYSession) ExitCode() int {
 
 func (ps *PTYSession) ThreadID() string {
 	return ps.threadID
+}
+
+func (ps *PTYSession) ScrollUp(lines int) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	maxOffset := ps.emulator.ScrollbackLen()
+	ps.scrollOffset += lines
+	if ps.scrollOffset > maxOffset {
+		ps.scrollOffset = maxOffset
+	}
+}
+
+func (ps *PTYSession) ScrollDown(lines int) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	ps.scrollOffset -= lines
+	if ps.scrollOffset < 0 {
+		ps.scrollOffset = 0
+	}
+}
+
+func (ps *PTYSession) ScrollToBottom() {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	ps.scrollOffset = 0
+}
+
+func (ps *PTYSession) ScrollOffset() int {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	return ps.scrollOffset
+}
+
+func (ps *PTYSession) IsScrolledUp() bool {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	return ps.scrollOffset > 0
 }
 
 var _ io.Writer = (*PTYSession)(nil)
