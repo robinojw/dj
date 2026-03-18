@@ -36,6 +36,19 @@ func (store *ThreadStore) AddWithParent(id string, title string, parentID string
 	store.order = append(store.order, id)
 }
 
+func (store *ThreadStore) AddSubAgent(id string, title string, parentID string, nickname string, role string, depth int) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	thread := NewThreadState(id, title)
+	thread.ParentID = parentID
+	thread.AgentNickname = nickname
+	thread.AgentRole = role
+	thread.Depth = depth
+	store.threads[id] = thread
+	store.order = append(store.order, id)
+}
+
 func (store *ThreadStore) Get(id string) (*ThreadState, bool) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
