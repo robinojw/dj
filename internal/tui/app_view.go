@@ -7,36 +7,57 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var titleStyle = lipgloss.NewStyle().
-	Bold(true).
-	Foreground(lipgloss.Color("39")).
-	MarginBottom(1)
+const (
+	headerHeight    = 1
+	statusBarHeight = 1
+	viewSeparator   = "\n"
+)
+
+func joinSections(sections ...string) string {
+	return strings.Join(sections, viewSeparator)
+}
 
 func (app AppModel) View() string {
-	title := titleStyle.Render("DJ — Codex TUI Visualizer")
+	title := app.header.View()
 	status := app.statusBar.View()
 
 	if app.helpVisible {
-		return title + "\n" + app.help.View() + "\n" + status
+		return joinSections(title, app.help.View(), status)
 	}
 
 	if app.menuVisible {
-		return title + "\n" + app.menu.View() + "\n" + status
+		return joinSections(title, app.menu.View(), status)
 	}
 
-	canvas := app.renderCanvas()
 	hasPinned := len(app.sessionPanel.PinnedSessions()) > 0
 
-	if !hasPinned {
-		return title + "\n" + canvas + "\n" + status
+	if hasPinned {
+		return app.renderSplitView(title, status)
 	}
 
+	canvasHeight := app.height - headerHeight - statusBarHeight
+	if canvasHeight < 1 {
+		canvasHeight = 1
+	}
+	app.canvas.SetDimensions(app.width, canvasHeight)
+	canvas := app.renderCanvas()
+	return joinSections(title, canvas, status)
+}
+
+func (app AppModel) renderSplitView(title string, status string) string {
+	canvasHeight := int(float64(app.height)*app.sessionPanel.SplitRatio()) - headerHeight - statusBarHeight
+	if canvasHeight < 1 {
+		canvasHeight = 1
+	}
+	app.canvas.SetDimensions(app.width, canvasHeight)
+	canvas := app.renderCanvas()
 	divider := app.renderDivider()
 	panel := app.renderSessionPanel()
-	return title + "\n" + canvas + "\n" + divider + "\n" + panel + "\n" + status
+	return joinSections(title, canvas, divider, panel, status)
 }
 
 func (app AppModel) renderCanvas() string {
+	app.canvas.SetPinnedIDs(app.sessionPanel.PinnedSessions())
 	canvas := app.canvas.View()
 	if app.canvasMode == CanvasModeTree {
 		treeView := app.tree.View()

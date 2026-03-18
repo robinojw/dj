@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/internal/appserver"
 	"github.com/robinojw/dj/internal/state"
@@ -33,23 +35,27 @@ type AppModel struct {
 	events           chan appserver.ProtoEvent
 	ptySessions      map[string]*PTYSession
 	ptyEvents        chan PTYOutputMsg
+	sessionCounter   *int
 	interactiveCmd   string
 	interactiveArgs  []string
+	header           HeaderBar
 	sessionPanel     SessionPanelModel
 }
 
 func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 	app := AppModel{
-		store:        store,
-		statusBar:    NewStatusBar(),
-		canvas:       NewCanvasModel(store),
-		tree:         NewTreeModel(store),
-		prefix:       NewPrefixHandler(),
-		help:         NewHelpModel(),
-		events:       make(chan appserver.ProtoEvent, eventChannelSize),
-		ptySessions:  make(map[string]*PTYSession),
-		ptyEvents:    make(chan PTYOutputMsg, eventChannelSize),
-		sessionPanel: NewSessionPanelModel(),
+		store:          store,
+		statusBar:      NewStatusBar(),
+		canvas:         NewCanvasModel(store),
+		tree:           NewTreeModel(store),
+		prefix:         NewPrefixHandler(),
+		help:           NewHelpModel(),
+		events:         make(chan appserver.ProtoEvent, eventChannelSize),
+		ptySessions:    make(map[string]*PTYSession),
+		ptyEvents:      make(chan PTYOutputMsg, eventChannelSize),
+		sessionCounter: new(int),
+		header:         NewHeaderBar(0),
+		sessionPanel:   NewSessionPanelModel(),
 	}
 	for _, opt := range opts {
 		opt(&app)
@@ -60,15 +66,15 @@ func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 type AppOption func(*AppModel)
 
 func WithClient(client *appserver.Client) AppOption {
-	return func(a *AppModel) {
-		a.client = client
+	return func(app *AppModel) {
+		app.client = client
 	}
 }
 
 func WithInteractiveCommand(command string, args ...string) AppOption {
-	return func(a *AppModel) {
-		a.interactiveCmd = command
-		a.interactiveArgs = args
+	return func(app *AppModel) {
+		app.interactiveCmd = command
+		app.interactiveArgs = args
 	}
 }
 
@@ -100,14 +106,38 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return app.handleKey(msg)
 	case tea.WindowSizeMsg:
-		app.width = msg.Width
-		app.height = msg.Height
-		app.statusBar.SetWidth(msg.Width)
-		return app, app.rebalancePTYSizes()
+		return app.handleWindowSize(msg)
 	case protoEventMsg:
 		return app.handleProtoEvent(msg.Event)
 	case PTYOutputMsg:
 		return app.handlePTYOutput(msg)
+	case AppServerErrorMsg:
+		app.statusBar.SetError(msg.Error())
+		return app, nil
+	case ThreadCreatedMsg:
+		return app.handleThreadCreated(msg)
+	default:
+		return app.handleAgentMsg(msg)
+	}
+}
+
+func (app AppModel) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
+	app.width = msg.Width
+	app.height = msg.Height
+	app.header.SetWidth(msg.Width)
+	app.statusBar.SetWidth(msg.Width)
+	return app, app.rebalancePTYSizes()
+}
+
+func (app AppModel) handleThreadCreated(msg ThreadCreatedMsg) (tea.Model, tea.Cmd) {
+	app.store.Add(msg.ThreadID, msg.Title)
+	app.statusBar.SetThreadCount(len(app.store.All()))
+	app.canvas.SetSelected(len(app.store.All()) - 1)
+	return app.openSession()
+}
+
+func (app AppModel) handleAgentMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
 	case SessionConfiguredMsg:
 		return app.handleSessionConfigured(msg)
 	case TaskStartedMsg:
@@ -122,13 +152,6 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app.handleExecApproval(msg)
 	case PatchApprovalRequestMsg:
 		return app.handlePatchApproval(msg)
-	case AppServerErrorMsg:
-		app.statusBar.SetError(msg.Error())
-		return app, nil
-	case ThreadCreatedMsg:
-		app.store.Add(msg.ThreadID, msg.Title)
-		app.statusBar.SetThreadCount(len(app.store.All()))
-		return app, nil
 	}
 	return app, nil
 }
@@ -142,20 +165,32 @@ func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return app.handleMenuKey(msg)
 	}
 
-	prefixResult := app.prefix.HandleKey(msg)
-	switch prefixResult {
-	case PrefixWaiting:
-		return app, nil
-	case PrefixComplete:
-		return app.handlePrefixAction()
-	case PrefixCancelled:
-		return app, nil
+	if result, model, cmd := app.handlePrefix(msg); result {
+		return model, cmd
 	}
 
 	if app.focusPane == FocusPaneSession {
 		return app.handleSessionKey(msg)
 	}
 
+	return app.handleCanvasKey(msg)
+}
+
+func (app AppModel) handlePrefix(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
+	prefixResult := app.prefix.HandleKey(msg)
+	switch prefixResult {
+	case PrefixWaiting:
+		return true, app, nil
+	case PrefixComplete:
+		model, cmd := app.handlePrefixAction()
+		return true, model, cmd
+	case PrefixCancelled:
+		return true, app, nil
+	}
+	return false, app, nil
+}
+
+func (app AppModel) handleCanvasKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC, tea.KeyEsc:
 		return app, tea.Quit
@@ -178,28 +213,28 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return app, app.createThread()
 	case "?":
 		app.helpVisible = !app.helpVisible
-	case " ":
+	case " ", "s":
 		return app.togglePin()
 	}
 	return app, nil
 }
 
 func (app AppModel) createThread() tea.Cmd {
-	if app.client == nil {
-		return func() tea.Msg {
-			return ThreadCreatedMsg{
-				ThreadID: "local",
-				Title:    "New Thread",
-			}
+	*app.sessionCounter++
+	counter := *app.sessionCounter
+	return func() tea.Msg {
+		return ThreadCreatedMsg{
+			ThreadID: fmt.Sprintf("session-%d", counter),
+			Title:    fmt.Sprintf("Session %d", counter),
 		}
 	}
-	return nil
 }
 
 func (app AppModel) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	isToggle := msg.Type == tea.KeyRunes && msg.String() == "?"
 	isEsc := msg.Type == tea.KeyEsc
-	if isToggle || isEsc {
+	shouldDismissHelp := isToggle || isEsc
+	if shouldDismissHelp {
 		app.helpVisible = false
 	}
 	return app, nil

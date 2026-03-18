@@ -7,39 +7,73 @@ import (
 	"github.com/robinojw/dj/internal/state"
 )
 
-func TestCardRenderShowsTitle(t *testing.T) {
-	thread := state.NewThreadState("t-1", "Build web app")
+const (
+	testThreadID    = "t-1"
+	testThreadTitle = "Test"
+	testBuildTitle  = "Build web app"
+	testCardWidth   = 50
+	testCardHeight  = 10
+)
+
+func TestCardRenderShowsTitle(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testBuildTitle)
 	thread.Status = state.StatusActive
 
-	card := NewCardModel(thread, false)
+	card := NewCardModel(thread, false, false)
 	output := card.View()
 
-	if !strings.Contains(output, "Build web app") {
-		t.Errorf("expected title in output, got:\n%s", output)
+	if !strings.Contains(output, testBuildTitle) {
+		testing.Errorf("expected title in output, got:\n%s", output)
 	}
 }
 
-func TestCardRenderShowsStatus(t *testing.T) {
-	thread := state.NewThreadState("t-1", "Test")
+func TestCardRenderShowsStatus(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testThreadTitle)
 	thread.Status = state.StatusActive
 
-	card := NewCardModel(thread, false)
+	card := NewCardModel(thread, false, false)
 	output := card.View()
 
 	if !strings.Contains(output, "active") {
-		t.Errorf("expected status in output, got:\n%s", output)
+		testing.Errorf("expected status in output, got:\n%s", output)
 	}
 }
 
-func TestCardRenderSelectedHighlight(t *testing.T) {
-	thread := state.NewThreadState("t-1", "Test")
-	card := NewCardModel(thread, true)
+func TestCardRenderSelectedHighlight(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testThreadTitle)
+	card := NewCardModel(thread, true, false)
 	selected := card.View()
 
-	card2 := NewCardModel(thread, false)
+	card2 := NewCardModel(thread, false, false)
 	unselected := card2.View()
 
 	if selected == unselected {
-		t.Error("selected and unselected cards should differ")
+		testing.Error("selected and unselected cards should differ")
+	}
+}
+
+func TestCardDynamicSize(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testThreadTitle)
+	thread.Status = state.StatusActive
+
+	card := NewCardModel(thread, false, false)
+	card.SetSize(testCardWidth, testCardHeight)
+	output := card.View()
+
+	if !strings.Contains(output, testThreadTitle) {
+		testing.Errorf("expected title in dynamic card, got:\n%s", output)
+	}
+}
+
+func TestCardPinnedShowsIndicator(testing *testing.T) {
+	thread := state.NewThreadState(testThreadID, testBuildTitle)
+	thread.Status = state.StatusActive
+
+	card := NewCardModel(thread, false, true)
+	card.SetSize(testCardWidth, testCardHeight)
+	output := card.View()
+
+	if !strings.Contains(output, "✓") {
+		testing.Errorf("expected pinned indicator in output, got:\n%s", output)
 	}
 }
