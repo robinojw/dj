@@ -7,6 +7,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const (
+	headerHeight    = 1
+	statusBarHeight = 1
+)
+
 var titleStyle = lipgloss.NewStyle().
 	Bold(true).
 	Foreground(lipgloss.Color("39")).
@@ -24,13 +29,28 @@ func (app AppModel) View() string {
 		return title + "\n" + app.menu.View() + "\n" + status
 	}
 
-	canvas := app.renderCanvas()
 	hasPinned := len(app.sessionPanel.PinnedSessions()) > 0
 
-	if !hasPinned {
-		return title + "\n" + canvas + "\n" + status
+	if hasPinned {
+		return app.renderSplitView(title, status)
 	}
 
+	canvasHeight := app.height - headerHeight - statusBarHeight
+	if canvasHeight < 1 {
+		canvasHeight = 1
+	}
+	app.canvas.SetDimensions(app.width, canvasHeight)
+	canvas := app.renderCanvas()
+	return title + "\n" + canvas + "\n" + status
+}
+
+func (app AppModel) renderSplitView(title string, status string) string {
+	canvasHeight := int(float64(app.height)*app.sessionPanel.SplitRatio()) - headerHeight - statusBarHeight
+	if canvasHeight < 1 {
+		canvasHeight = 1
+	}
+	app.canvas.SetDimensions(app.width, canvasHeight)
+	canvas := app.renderCanvas()
 	divider := app.renderDivider()
 	panel := app.renderSessionPanel()
 	return title + "\n" + canvas + "\n" + divider + "\n" + panel + "\n" + status

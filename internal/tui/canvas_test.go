@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/robinojw/dj/internal/state"
@@ -73,5 +74,20 @@ func TestCanvasEmptyStore(t *testing.T) {
 	canvas.MoveRight()
 	if canvas.SelectedIndex() != 0 {
 		t.Errorf("expected 0 for empty canvas")
+	}
+}
+
+func TestCanvasViewWithDimensions(t *testing.T) {
+	store := state.NewThreadStore()
+	store.Add("t-1", "First")
+	store.Add("t-2", "Second")
+	store.Add("t-3", "Third")
+
+	canvas := NewCanvasModel(store)
+	canvas.SetDimensions(120, 30)
+	output := canvas.View()
+
+	if !strings.Contains(output, "First") {
+		t.Errorf("expected First in output:\n%s", output)
 	}
 }
