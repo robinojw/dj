@@ -2,6 +2,35 @@ package tui
 
 import tea "github.com/charmbracelet/bubbletea"
 
+func (app AppModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	isScrollWheel := msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown
+	if !isScrollWheel {
+		return app, nil
+	}
+
+	if app.focusPane != FocusPaneSession {
+		return app, nil
+	}
+
+	activeID := app.sessionPanel.ActiveThreadID()
+	if activeID == "" {
+		return app, nil
+	}
+
+	ptySession, exists := app.ptySessions[activeID]
+	if !exists {
+		return app, nil
+	}
+
+	if msg.Button == tea.MouseButtonWheelUp {
+		ptySession.ScrollUp(scrollStep)
+	} else {
+		ptySession.ScrollDown(scrollStep)
+	}
+
+	return app, nil
+}
+
 func (app AppModel) handleSessionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
@@ -70,23 +99,29 @@ func (app AppModel) pinSession(threadID string) (tea.Model, tea.Cmd) {
 		return app, nil
 	}
 
-	_, hasPTY := app.ptySessions[threadID]
-	if !hasPTY {
-		ptySession := NewPTYSession(PTYSessionConfig{
-			ThreadID: threadID,
-			Command:  app.resolveInteractiveCmd(),
-			Args:     app.interactiveArgs,
-			SendMsg:  app.ptyEventCallback(),
-		})
-		if err := ptySession.Start(); err != nil {
-			app.statusBar.SetError(err.Error())
-			return app, nil
-		}
-		app.ptySessions[threadID] = ptySession
-	}
+	app.ensurePTYSession(threadID)
 
 	app.sessionPanel.Pin(threadID)
 	return app, app.rebalancePTYSizes()
+}
+
+func (app *AppModel) ensurePTYSession(threadID string) {
+	_, hasPTY := app.ptySessions[threadID]
+	if hasPTY {
+		return
+	}
+
+	ptySession := NewPTYSession(PTYSessionConfig{
+		ThreadID: threadID,
+		Command:  app.resolveInteractiveCmd(),
+		Args:     app.interactiveArgs,
+		SendMsg:  app.ptyEventCallback(),
+	})
+	if err := ptySession.Start(); err != nil {
+		app.statusBar.SetError(err.Error())
+		return
+	}
+	app.ptySessions[threadID] = ptySession
 }
 
 func (app AppModel) pinnedIndex(threadID string) int {
@@ -141,6 +176,18 @@ func (app AppModel) rebalancePTYSizes() tea.Cmd {
 		return nil
 	}
 
+	contentWidth, contentHeight := app.panelContentDimensions()
+
+	if app.sessionPanel.Zoomed() {
+		app.resizeZoomedSession(contentWidth, contentHeight)
+		return nil
+	}
+
+	app.resizeSplitSessions(pinned, contentWidth, contentHeight)
+	return nil
+}
+
+func (app AppModel) panelContentDimensions() (int, int) {
 	canvasHeight := int(float64(app.height) * app.sessionPanel.SplitRatio())
 	panelHeight := app.height - canvasHeight - dividerHeight
 	if panelHeight < 1 {
@@ -155,16 +202,19 @@ func (app AppModel) rebalancePTYSizes() tea.Cmd {
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
+	return contentWidth, contentHeight
+}
 
-	if app.sessionPanel.Zoomed() {
-		activeID := app.sessionPanel.ActiveThreadID()
-		ptySession, exists := app.ptySessions[activeID]
-		if exists {
-			ptySession.Resize(contentWidth, contentHeight)
-		}
-		return nil
+func (app AppModel) resizeZoomedSession(contentWidth int, contentHeight int) {
+	activeID := app.sessionPanel.ActiveThreadID()
+	ptySession, exists := app.ptySessions[activeID]
+	if !exists {
+		return
 	}
+	ptySession.Resize(contentWidth, contentHeight)
+}
 
+func (app AppModel) resizeSplitSessions(pinned []string, contentWidth int, contentHeight int) {
 	count := len(pinned)
 	paneWidth := app.width/count - sessionPaneBorderSize
 	if paneWidth < 1 {
@@ -172,11 +222,11 @@ func (app AppModel) rebalancePTYSizes() tea.Cmd {
 	}
 	for _, threadID := range pinned {
 		ptySession, exists := app.ptySessions[threadID]
-		if exists {
-			ptySession.Resize(paneWidth, contentHeight)
+		if !exists {
+			continue
 		}
+		ptySession.Resize(paneWidth, contentHeight)
 	}
-	return nil
 }
 
 func (app *AppModel) StopAllPTYSessions() {

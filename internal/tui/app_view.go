@@ -8,9 +8,11 @@ import (
 )
 
 const (
-	headerHeight    = 1
-	statusBarHeight = 1
-	viewSeparator   = "\n"
+	headerHeight      = 1
+	statusBarHeight   = 1
+	viewSeparator     = "\n"
+	colorDimGray      = "240"
+	scrollIndicatorFg = "255"
 )
 
 func joinSections(sections ...string) string {
@@ -130,18 +132,37 @@ func (app AppModel) renderPTYContent(threadID string) string {
 
 	content := ptySession.Render()
 	hasVisibleContent := strings.TrimSpace(content) != ""
-	if hasVisibleContent {
-		return content
-	}
-
-	if !ptySession.Running() {
+	isEmptyAndExited := !hasVisibleContent && !ptySession.Running()
+	if isEmptyAndExited {
 		return fmt.Sprintf("[process exited: %d]", ptySession.ExitCode())
 	}
+
+	if ptySession.IsScrolledUp() {
+		content = overlayScrollIndicator(content, ptySession.ScrollOffset())
+	}
+
 	return content
 }
 
+func overlayScrollIndicator(content string, linesBelow int) string {
+	indicator := renderScrollIndicator(linesBelow)
+	lines := strings.Split(content, viewSeparator)
+	if len(lines) > 0 {
+		lines[len(lines)-1] = indicator
+	}
+	return strings.Join(lines, viewSeparator)
+}
+
+func renderScrollIndicator(linesBelow int) string {
+	text := fmt.Sprintf(" ↓ %d lines below ", linesBelow)
+	style := lipgloss.NewStyle().
+		Background(lipgloss.Color(colorDimGray)).
+		Foreground(lipgloss.Color(scrollIndicatorFg))
+	return style.Render(text)
+}
+
 func (app AppModel) sessionPaneStyle(width int, height int, active bool) lipgloss.Style {
-	borderColor := lipgloss.Color("240")
+	borderColor := lipgloss.Color(colorDimGray)
 	if active {
 		borderColor = lipgloss.Color("39")
 	}

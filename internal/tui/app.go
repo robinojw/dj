@@ -105,6 +105,8 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return app.handleKey(msg)
+	case tea.MouseMsg:
+		return app.handleMouse(msg)
 	case tea.WindowSizeMsg:
 		return app.handleWindowSize(msg)
 	case protoEventMsg:
