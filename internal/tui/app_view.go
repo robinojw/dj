@@ -7,13 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var titleStyle = lipgloss.NewStyle().
-	Bold(true).
-	Foreground(lipgloss.Color("39")).
-	MarginBottom(1)
-
 func (app AppModel) View() string {
-	title := titleStyle.Render("DJ — Codex TUI Visualizer")
+	title := app.header.View()
 	status := app.statusBar.View()
 
 	if app.helpVisible {
