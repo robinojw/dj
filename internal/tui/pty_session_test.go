@@ -47,9 +47,12 @@ func TestPTYSessionStartAndRender(testing *testing.T) {
 
 	deadline := time.After(ptyTestTimeout)
 	for {
-		hasExited := checkForExit(&mu, messages)
+		mu.Lock()
+		snapshot := make([]PTYOutputMsg, len(messages))
+		copy(snapshot, messages)
+		mu.Unlock()
 
-		if hasExited {
+		if checkForExit(snapshot) {
 			break
 		}
 
@@ -71,10 +74,7 @@ func TestPTYSessionStartAndRender(testing *testing.T) {
 	}
 }
 
-func checkForExit(mu *sync.Mutex, messages []PTYOutputMsg) bool {
-	mu.Lock()
-	defer mu.Unlock()
-
+func checkForExit(messages []PTYOutputMsg) bool {
 	for _, msg := range messages {
 		if msg.Exited {
 			return true
