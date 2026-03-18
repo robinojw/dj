@@ -35,6 +35,7 @@ type AppModel struct {
 	ptyEvents        chan PTYOutputMsg
 	interactiveCmd   string
 	interactiveArgs  []string
+	header           HeaderBar
 	sessionPanel     SessionPanelModel
 }
 
@@ -49,6 +50,7 @@ func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 		events:       make(chan appserver.ProtoEvent, eventChannelSize),
 		ptySessions:  make(map[string]*PTYSession),
 		ptyEvents:    make(chan PTYOutputMsg, eventChannelSize),
+		header:       NewHeaderBar(0),
 		sessionPanel: NewSessionPanelModel(),
 	}
 	for _, opt := range opts {
@@ -102,6 +104,7 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		app.width = msg.Width
 		app.height = msg.Height
+		app.header.SetWidth(msg.Width)
 		app.statusBar.SetWidth(msg.Width)
 		return app, app.rebalancePTYSizes()
 	case protoEventMsg:
