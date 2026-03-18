@@ -7,15 +7,25 @@ import (
 	"github.com/robinojw/dj/internal/state"
 )
 
-const canvasColumns = 3
+const (
+	canvasColumns = 3
+	rowGap        = 1
+)
 
 type CanvasModel struct {
 	store    *state.ThreadStore
 	selected int
+	width    int
+	height   int
 }
 
 func NewCanvasModel(store *state.ThreadStore) CanvasModel {
 	return CanvasModel{store: store}
+}
+
+func (canvas *CanvasModel) SetDimensions(width int, height int) {
+	canvas.width = width
+	canvas.height = height
 }
 
 func (canvas *CanvasModel) SelectedIndex() int {
@@ -69,8 +79,25 @@ func (canvas *CanvasModel) MoveUp() {
 func (canvas *CanvasModel) View() string {
 	threads := canvas.store.All()
 	if len(threads) == 0 {
-		return "No active threads. Press 'n' to create one."
+		emptyMessage := "No active threads. Press 'n' to create one."
+		if canvas.width > 0 && canvas.height > 0 {
+			return lipgloss.Place(canvas.width, canvas.height,
+				lipgloss.Center, lipgloss.Center, emptyMessage)
+		}
+		return emptyMessage
 	}
+
+	grid := canvas.renderGrid(threads)
+	if canvas.width > 0 && canvas.height > 0 {
+		return lipgloss.Place(canvas.width, canvas.height,
+			lipgloss.Center, lipgloss.Center, grid)
+	}
+	return grid
+}
+
+func (canvas *CanvasModel) renderGrid(threads []*state.ThreadState) string {
+	numRows := (len(threads) + canvasColumns - 1) / canvasColumns
+	cardWidth, cardHeight := canvas.cardDimensions(numRows)
 
 	var rows []string
 	for rowStart := 0; rowStart < len(threads); rowStart += canvasColumns {
@@ -83,6 +110,7 @@ func (canvas *CanvasModel) View() string {
 		for index := rowStart; index < rowEnd; index++ {
 			isSelected := index == canvas.selected
 			card := NewCardModel(threads[index], isSelected)
+			card.SetSize(cardWidth, cardHeight)
 			cards = append(cards, card.View())
 		}
 
@@ -90,4 +118,23 @@ func (canvas *CanvasModel) View() string {
 	}
 
 	return strings.Join(rows, "\n")
+}
+
+func (canvas CanvasModel) cardDimensions(numRows int) (int, int) {
+	if canvas.width == 0 || canvas.height == 0 {
+		return minCardWidth, minCardHeight
+	}
+
+	cardWidth := canvas.width / canvasColumns
+	if cardWidth < minCardWidth {
+		cardWidth = minCardWidth
+	}
+
+	totalRowGaps := rowGap * (numRows - 1)
+	cardHeight := (canvas.height - totalRowGaps) / numRows
+	if cardHeight < minCardHeight {
+		cardHeight = minCardHeight
+	}
+
+	return cardWidth, cardHeight
 }

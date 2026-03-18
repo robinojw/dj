@@ -43,3 +43,16 @@ func TestCardRenderSelectedHighlight(t *testing.T) {
 		t.Error("selected and unselected cards should differ")
 	}
 }
+
+func TestCardDynamicSize(t *testing.T) {
+	thread := state.NewThreadState("t-1", "Test")
+	thread.Status = state.StatusActive
+
+	card := NewCardModel(thread, false)
+	card.SetSize(50, 10)
+	output := card.View()
+
+	if !strings.Contains(output, "Test") {
+		t.Errorf("expected title in dynamic card, got:\n%s", output)
+	}
+}
