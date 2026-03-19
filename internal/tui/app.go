@@ -58,6 +58,10 @@ func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 	for _, opt := range opts {
 		opt(&app)
 	}
+	hasPool := app.pool != nil
+	if hasPool {
+		app.header.SetSwarmActive(true)
+	}
 	return app
 }
 

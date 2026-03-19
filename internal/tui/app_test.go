@@ -291,3 +291,4 @@ func TestNewAppModelWithoutPool(testing *testing.T) {
 		testing.Error("expected pool to be nil for backward compatibility")
 	}
 }
+
