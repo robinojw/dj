@@ -22,7 +22,9 @@ const (
 	canvasTestTitleRoot   = "Root"
 	canvasTestTitleChild1 = "Child 1"
 	canvasTestTitleChild2 = "Child 2"
-	canvasTestTitleOnly  = "Only"
+	canvasTestTitleOnly       = "Only"
+	canvasTestExpectedFmt     = "expected %s, got %s"
+	canvasTestExpectedThreads = 2
 )
 
 func TestCanvasNavigation(test *testing.T) {
@@ -77,7 +79,7 @@ func TestCanvasSelectedThreadID(test *testing.T) {
 
 	id := canvas.SelectedThreadID()
 	if id != canvasTestID2 {
-		test.Errorf("expected %s, got %s", canvasTestID2, id)
+		test.Errorf(canvasTestExpectedFmt, canvasTestID2, id)
 	}
 }
 
@@ -166,5 +168,38 @@ func TestCanvasTreeOrder(test *testing.T) {
 	}
 	if child1Index > child2Index {
 		test.Error("child-1 should appear before child-2")
+	}
+}
+
+func TestCanvasSwarmFilter(test *testing.T) {
+	store := state.NewThreadStore()
+	store.Add(canvasTestID1, canvasTestFirst)
+	store.Add(canvasTestID2, canvasTestSecond)
+	thread2, _ := store.Get(canvasTestID2)
+	thread2.AgentProcessID = "architect-1"
+
+	canvas := NewCanvasModel(store)
+	canvas.SetSwarmFilter(true)
+
+	filtered := canvas.filteredThreads()
+	if len(filtered) != 1 {
+		test.Errorf("expected 1 agent thread, got %d", len(filtered))
+	}
+	if filtered[0].ID != canvasTestID2 {
+		test.Errorf(canvasTestExpectedFmt, canvasTestID2, filtered[0].ID)
+	}
+}
+
+func TestCanvasSwarmFilterOff(test *testing.T) {
+	store := state.NewThreadStore()
+	store.Add(canvasTestID1, canvasTestFirst)
+	store.Add(canvasTestID2, canvasTestSecond)
+
+	canvas := NewCanvasModel(store)
+	canvas.SetSwarmFilter(false)
+
+	filtered := canvas.filteredThreads()
+	if len(filtered) != canvasTestExpectedThreads {
+		test.Errorf("expected %d threads, got %d", canvasTestExpectedThreads, len(filtered))
 	}
 }

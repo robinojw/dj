@@ -14,11 +14,12 @@ const (
 )
 
 type CanvasModel struct {
-	store     *state.ThreadStore
-	selected  int
-	pinnedIDs map[string]bool
-	width     int
-	height    int
+	store       *state.ThreadStore
+	selected    int
+	pinnedIDs   map[string]bool
+	width       int
+	height      int
+	swarmFilter bool
 }
 
 func NewCanvasModel(store *state.ThreadStore) CanvasModel {
@@ -37,16 +38,40 @@ func (canvas *CanvasModel) SetDimensions(width int, height int) {
 	canvas.height = height
 }
 
+func (canvas *CanvasModel) SetSwarmFilter(enabled bool) {
+	canvas.swarmFilter = enabled
+}
+
+func (canvas *CanvasModel) filteredThreads() []*state.ThreadState {
+	threads := canvas.store.TreeOrder()
+	if !canvas.swarmFilter {
+		return threads
+	}
+
+	var filtered []*state.ThreadState
+	for _, thread := range threads {
+		isAgent := thread.AgentProcessID != ""
+		if isAgent {
+			filtered = append(filtered, thread)
+		}
+	}
+	return filtered
+}
+
 func (canvas *CanvasModel) SelectedIndex() int {
 	return canvas.selected
 }
 
 func (canvas *CanvasModel) SelectedThreadID() string {
-	threads := canvas.store.TreeOrder()
+	threads := canvas.filteredThreads()
 	if len(threads) == 0 {
 		return ""
 	}
-	return threads[canvas.selected].ID
+	clampedIndex := canvas.selected
+	if clampedIndex >= len(threads) {
+		clampedIndex = len(threads) - 1
+	}
+	return threads[clampedIndex].ID
 }
 
 func (canvas *CanvasModel) SetSelected(index int) {
@@ -70,7 +95,7 @@ func (canvas *CanvasModel) ClampSelected() {
 }
 
 func (canvas *CanvasModel) MoveRight() {
-	threads := canvas.store.TreeOrder()
+	threads := canvas.filteredThreads()
 	if canvas.selected < len(threads)-1 {
 		canvas.selected++
 	}
@@ -83,7 +108,7 @@ func (canvas *CanvasModel) MoveLeft() {
 }
 
 func (canvas *CanvasModel) MoveDown() {
-	threads := canvas.store.TreeOrder()
+	threads := canvas.filteredThreads()
 	next := canvas.selected + canvasColumns
 	if next < len(threads) {
 		canvas.selected = next
@@ -107,7 +132,7 @@ func (canvas *CanvasModel) centerContent(content string) string {
 }
 
 func (canvas *CanvasModel) View() string {
-	threads := canvas.store.TreeOrder()
+	threads := canvas.filteredThreads()
 	if len(threads) == 0 {
 		return canvas.renderEmpty()
 	}
