@@ -129,6 +129,34 @@ func (agentPool *AgentPool) StopAll() {
 	agentPool.agents = make(map[string]*AgentProcess)
 }
 
+func (agentPool *AgentPool) GetByThreadID(threadID string) (*AgentProcess, bool) {
+	agentPool.mu.RLock()
+	defer agentPool.mu.RUnlock()
+
+	for _, agent := range agentPool.agents {
+		if agent.ThreadID == threadID {
+			return agent, true
+		}
+	}
+	return nil, false
+}
+
+func (agentPool *AgentPool) GetOrchestrator() (*AgentProcess, bool) {
+	agentPool.mu.RLock()
+	defer agentPool.mu.RUnlock()
+
+	for _, agent := range agentPool.agents {
+		if agent.Role == RoleOrchestrator {
+			return agent, true
+		}
+	}
+	return nil, false
+}
+
+func (agentPool *AgentPool) Personas() map[string]roster.PersonaDefinition {
+	return agentPool.personas
+}
+
 func (agentPool *AgentPool) nextAgentID(personaID string) string {
 	counter := agentPool.idCounter.Add(1)
 	return fmt.Sprintf("%s-%d", personaID, counter)
