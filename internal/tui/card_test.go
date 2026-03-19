@@ -22,6 +22,7 @@ const (
 	testSubCardWidth   = 30
 	testSubCardHeight  = 6
 	testDepthArrow     = "\u21b3"
+	testPersonaArchName = "Architect"
 )
 
 func TestCardRenderShowsTitle(testing *testing.T) {
@@ -164,6 +165,35 @@ func TestRootCardNoDepthPrefix(test *testing.T) {
 
 	if strings.Contains(view, testDepthArrow) {
 		test.Error("root card should not have depth prefix")
+	}
+}
+
+func TestCardPersonaBadge(testing *testing.T) {
+	thread := &state.ThreadState{
+		ID:             testThreadID,
+		Title:          testTaskDesignAPI,
+		Status:         state.StatusActive,
+		AgentProcessID: testArchitectID,
+	}
+	card := NewCardModel(thread, false, false)
+	card.SetPersonaBadge(testPersonaArchName)
+	view := card.View()
+	if !strings.Contains(view, testPersonaArchName) {
+		testing.Error("expected persona badge in card view")
+	}
+}
+
+func TestCardOrchestratorBorder(testing *testing.T) {
+	thread := &state.ThreadState{
+		ID:     testThreadID,
+		Title:  "Orchestrator",
+		Status: state.StatusIdle,
+	}
+	card := NewCardModel(thread, false, false)
+	card.SetOrchestrator(true)
+	view := card.View()
+	if view == "" {
+		testing.Error("expected non-empty card view")
 	}
 }
 
