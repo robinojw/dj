@@ -192,6 +192,35 @@ func TestReadLoopParsesV2Request(test *testing.T) {
 	serverWrite.Close()
 }
 
+func TestClientInitialize(test *testing.T) {
+	client := NewClient(clientTestCommand)
+	ctx, cancel := context.WithTimeout(context.Background(), clientTestTimeout)
+	defer cancel()
+
+	if err := client.Start(ctx); err != nil {
+		test.Fatalf(clientTestStartFail, err)
+	}
+	defer client.Stop()
+
+	messages := make(chan JSONRPCMessage, clientTestChannelSize)
+	go client.ReadLoop(func(message JSONRPCMessage) {
+		messages <- message
+	})
+
+	if err := client.Initialize(); err != nil {
+		test.Fatalf("Initialize failed: %v", err)
+	}
+
+	select {
+	case message := <-messages:
+		if message.Method != MethodInitialize {
+			test.Errorf(clientTestExpectedValue, MethodInitialize, message.Method)
+		}
+	case <-time.After(clientTestEventWait):
+		test.Fatal(clientTestTimeoutMsg)
+	}
+}
+
 func TestClientSendApproval(test *testing.T) {
 	client := NewClient(clientTestCommand)
 
