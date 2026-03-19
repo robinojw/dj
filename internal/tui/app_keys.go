@@ -11,6 +11,10 @@ func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return app.handleHelpKey(msg)
 	}
 
+	if app.inputBarVisible {
+		return app.handleInputBarKey(msg)
+	}
+
 	if app.menuVisible {
 		return app.handleMenuKey(msg)
 	}
