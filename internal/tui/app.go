@@ -3,6 +3,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/internal/appserver"
+	"github.com/robinojw/dj/internal/pool"
 	"github.com/robinojw/dj/internal/state"
 )
 
@@ -36,6 +37,7 @@ type AppModel struct {
 	interactiveArgs  []string
 	header           HeaderBar
 	sessionPanel     SessionPanelModel
+	pool             *pool.AgentPool
 }
 
 func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
@@ -64,6 +66,12 @@ type AppOption func(*AppModel)
 func WithClient(client *appserver.Client) AppOption {
 	return func(app *AppModel) {
 		app.client = client
+	}
+}
+
+func WithPool(agentPool *pool.AgentPool) AppOption {
+	return func(app *AppModel) {
+		app.pool = agentPool
 	}
 }
 
