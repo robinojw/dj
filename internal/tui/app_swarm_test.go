@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	testSwarmMaxAgents = 10
-	testSwarmCommand   = "echo"
+	testSwarmMaxAgents   = 10
+	testSwarmCommand     = "echo"
+	testSwarmPersonaID   = "architect"
+	testSwarmPersonaName = "Architect"
 )
 
 func TestAppModelSwarmFieldsDefault(testing *testing.T) {
@@ -41,7 +43,7 @@ func TestNewAppModelPoolSetsSwarmActive(testing *testing.T) {
 func TestShowPersonaPickerShowsMenu(testing *testing.T) {
 	store := state.NewThreadStore()
 	personas := []roster.PersonaDefinition{
-		{ID: "architect", Name: "Architect"},
+		{ID: testSwarmPersonaID, Name: testSwarmPersonaName},
 		{ID: "test", Name: "Test"},
 	}
 	agentPool := poolpkg.NewAgentPool(testSwarmCommand, []string{}, personas, testSwarmMaxAgents)
@@ -80,5 +82,29 @@ func TestShowPersonaPickerNoPersonas(testing *testing.T) {
 
 	if resultApp.menuVisible {
 		testing.Error("expected menu hidden when no personas")
+	}
+}
+
+func TestPersonaPickerDispatchShowsInputBar(testing *testing.T) {
+	store := state.NewThreadStore()
+	personas := []roster.PersonaDefinition{
+		{ID: testSwarmPersonaID, Name: testSwarmPersonaName},
+	}
+	agentPool := poolpkg.NewAgentPool(testSwarmCommand, []string{}, personas, testSwarmMaxAgents)
+	app := NewAppModel(store, WithPool(agentPool))
+
+	updated, _ := app.showPersonaPicker()
+	app = updated.(AppModel)
+
+	selected := app.menu.Selected()
+	app.menuVisible = false
+	updated, _ = app.dispatchPersonaPick(selected)
+	resultApp := updated.(AppModel)
+
+	if !resultApp.inputBarVisible {
+		testing.Error("expected input bar visible after persona pick")
+	}
+	if resultApp.inputBarIntent != IntentSpawnTask {
+		testing.Error("expected spawn task intent")
 	}
 }

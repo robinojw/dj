@@ -25,8 +25,9 @@ func (app AppModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return app, nil
 	case tea.KeyEnter:
 		selected := app.menu.Selected()
+		intent := app.menuIntent
 		app.closeMenu()
-		return app.dispatchMenuAction(selected)
+		return app.dispatchMenuByIntent(intent, selected)
 	}
 	return app, nil
 }
@@ -81,6 +82,17 @@ func (app AppModel) jumpToPane(digit rune) (tea.Model, tea.Cmd) {
 	return app, nil
 }
 
+func (app AppModel) dispatchMenuByIntent(intent MenuIntent, item MenuItem) (tea.Model, tea.Cmd) {
+	switch intent {
+	case MenuIntentPersonaPicker:
+		return app.dispatchPersonaPick(item)
+	case MenuIntentAgentPicker:
+		return app.dispatchAgentPick(item)
+	default:
+		return app.dispatchMenuAction(item)
+	}
+}
+
 func (app AppModel) dispatchMenuAction(item MenuItem) (tea.Model, tea.Cmd) {
 	threadID := app.canvas.SelectedThreadID()
 	if threadID == "" {
@@ -111,4 +123,5 @@ func (app *AppModel) showMenu() {
 
 func (app *AppModel) closeMenu() {
 	app.menuVisible = false
+	app.menuIntent = MenuIntentThread
 }

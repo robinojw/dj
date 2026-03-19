@@ -35,6 +35,35 @@ func buildPersonaMenuItems(personas map[string]roster.PersonaDefinition) []MenuI
 	return items
 }
 
+func (app AppModel) dispatchPersonaPick(item MenuItem) (tea.Model, tea.Cmd) {
+	persona := app.findPersonaByName(item.Label)
+	if persona == nil {
+		return app, nil
+	}
+
+	app.pendingPersonaID = persona.ID
+	app.inputBar = NewInputBarModel("Task for " + persona.Name + ": ")
+	app.inputBarVisible = true
+	app.inputBarIntent = IntentSpawnTask
+	return app, nil
+}
+
+func (app AppModel) findPersonaByName(name string) *roster.PersonaDefinition {
+	if app.pool == nil {
+		return nil
+	}
+	for _, persona := range app.pool.Personas() {
+		if persona.Name == name {
+			return &persona
+		}
+	}
+	return nil
+}
+
+func (app AppModel) dispatchAgentPick(item MenuItem) (tea.Model, tea.Cmd) {
+	return app, nil
+}
+
 func (app AppModel) sendMessageToAgent() (tea.Model, tea.Cmd) {
 	return app, nil
 }
