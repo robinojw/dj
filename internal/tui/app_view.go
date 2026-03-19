@@ -19,9 +19,16 @@ func joinSections(sections ...string) string {
 	return strings.Join(sections, viewSeparator)
 }
 
+func (app AppModel) renderBottomBar() string {
+	if app.inputBarVisible {
+		return app.inputBar.ViewWithWidth(app.width)
+	}
+	return app.statusBar.View()
+}
+
 func (app AppModel) View() string {
 	title := app.header.View()
-	status := app.statusBar.View()
+	status := app.renderBottomBar()
 
 	if app.helpVisible {
 		return joinSections(title, app.help.View(), status)
