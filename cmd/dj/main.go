@@ -3,12 +3,15 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
 	"github.com/robinojw/dj/internal/appserver"
 	"github.com/robinojw/dj/internal/config"
+	"github.com/robinojw/dj/internal/pool"
+	"github.com/robinojw/dj/internal/roster"
 	"github.com/robinojw/dj/internal/state"
 	"github.com/robinojw/dj/internal/tui"
 )
@@ -38,15 +41,30 @@ func runApp(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	client := appserver.NewClient(cfg.AppServer.Command, cfg.AppServer.Args...)
-	defer client.Stop()
-
 	store := state.NewThreadStore()
-	app := tui.NewAppModel(
-		store,
-		tui.WithClient(client),
-		tui.WithInteractiveCommand(cfg.Interactive.Command, cfg.Interactive.Args...),
-	)
+	var opts []tui.AppOption
+
+	personas, signals := loadRoster(cfg)
+	hasPersonas := len(personas) > 0
+	shouldUsePool := hasPersonas && cfg.Roster.AutoOrchestrate
+
+	if shouldUsePool {
+		agentPool := pool.NewAgentPool(
+			cfg.AppServer.Command,
+			cfg.AppServer.Args,
+			personas,
+			cfg.Pool.MaxAgents,
+		)
+		opts = append(opts, tui.WithPool(agentPool))
+		_ = signals
+	} else {
+		client := appserver.NewClient(cfg.AppServer.Command, cfg.AppServer.Args...)
+		defer client.Stop()
+		opts = append(opts, tui.WithClient(client))
+	}
+
+	opts = append(opts, tui.WithInteractiveCommand(cfg.Interactive.Command, cfg.Interactive.Args...))
+	app := tui.NewAppModel(store, opts...)
 
 	program := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	finalModel, err := program.Run()
@@ -56,4 +74,20 @@ func runApp(cmd *cobra.Command, args []string) error {
 	}
 
 	return err
+}
+
+func loadRoster(cfg *config.Config) ([]roster.PersonaDefinition, *roster.RepoSignals) {
+	personaDir := filepath.Join(cfg.Roster.Path, "personas")
+	personas, err := roster.LoadPersonas(personaDir)
+	if err != nil {
+		return nil, nil
+	}
+
+	signalsPath := filepath.Join(cfg.Roster.Path, "signals.json")
+	signals, err := roster.LoadSignals(signalsPath)
+	if err != nil {
+		return personas, nil
+	}
+
+	return personas, signals
 }
