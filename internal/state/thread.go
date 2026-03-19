@@ -14,16 +14,17 @@ type ChatMessage struct {
 }
 
 type ThreadState struct {
-	ID            string
-	Title         string
-	Status        string
-	Activity      string
-	ParentID      string
-	AgentNickname string
-	AgentRole     string
-	Depth         int
-	Messages      []ChatMessage
-	CommandOutput map[string]string
+	ID             string
+	Title          string
+	Status         string
+	Activity       string
+	ParentID       string
+	AgentNickname  string
+	AgentRole      string
+	AgentProcessID string
+	Depth          int
+	Messages       []ChatMessage
+	CommandOutput  map[string]string
 }
 
 func NewThreadState(id string, title string) *ThreadState {
