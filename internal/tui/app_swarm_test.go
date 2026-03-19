@@ -10,6 +10,20 @@ import (
 
 const testSwarmMaxAgents = 10
 
+func TestAppModelSwarmFieldsDefault(testing *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store)
+	if app.menuIntent != MenuIntentThread {
+		testing.Error("expected default menu intent to be thread")
+	}
+	if app.inputBarVisible {
+		testing.Error("expected input bar hidden by default")
+	}
+	if app.swarmFilter {
+		testing.Error("expected swarm filter off by default")
+	}
+}
+
 func TestNewAppModelPoolSetsSwarmActive(testing *testing.T) {
 	store := state.NewThreadStore()
 	agentPool := poolpkg.NewAgentPool("echo", []string{}, nil, testSwarmMaxAgents)

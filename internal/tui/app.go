@@ -35,9 +35,16 @@ type AppModel struct {
 	sessionCounter   *int
 	interactiveCmd   string
 	interactiveArgs  []string
-	header           HeaderBar
-	sessionPanel     SessionPanelModel
-	pool             *pool.AgentPool
+	header               HeaderBar
+	sessionPanel         SessionPanelModel
+	pool                 *pool.AgentPool
+	inputBar             InputBarModel
+	inputBarVisible      bool
+	inputBarIntent       InputIntent
+	menuIntent           MenuIntent
+	pendingPersonaID     string
+	pendingTargetAgentID string
+	swarmFilter          bool
 }
 
 func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
