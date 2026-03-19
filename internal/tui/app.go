@@ -95,6 +95,12 @@ func (app AppModel) HelpVisible() bool {
 }
 
 func (app AppModel) Init() tea.Cmd {
+	if app.pool != nil {
+		return tea.Batch(
+			app.listenForPoolEvents(),
+			app.listenForPTYEvents(),
+		)
+	}
 	if app.client == nil {
 		return nil
 	}
@@ -122,6 +128,8 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app, nil
 	case ThreadCreatedMsg:
 		return app.handleThreadCreated(msg)
+	case PoolEventMsg:
+		return app.handlePoolEvent(msg)
 	default:
 		return app.handleAgentMsg(msg)
 	}
