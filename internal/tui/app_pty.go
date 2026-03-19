@@ -114,6 +114,10 @@ func (app *AppModel) stopAndRemovePTY(threadID string) {
 	}
 	ptySession.Stop()
 	delete(app.ptySessions, threadID)
+	hasNoSessions := len(app.ptySessions) == 0
+	if hasNoSessions {
+		app.statusBar.SetConnected(false)
+	}
 }
 
 func (app AppModel) togglePin() (tea.Model, tea.Cmd) {
@@ -159,6 +163,7 @@ func (app *AppModel) ensurePTYSession(threadID string) {
 		return
 	}
 	app.ptySessions[threadID] = ptySession
+	app.statusBar.SetConnected(true)
 }
 
 func (app AppModel) pinnedIndex(threadID string) int {
