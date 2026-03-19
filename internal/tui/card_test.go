@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/robinojw/dj/internal/state"
 )
 
@@ -163,5 +164,28 @@ func TestRootCardNoDepthPrefix(test *testing.T) {
 
 	if strings.Contains(view, testDepthArrow) {
 		test.Error("root card should not have depth prefix")
+	}
+}
+
+func TestPersonaColorMapping(testing *testing.T) {
+	tests := []struct {
+		personaID string
+		expected  lipgloss.Color
+	}{
+		{"architect", PersonaColorArchitect},
+		{"test", PersonaColorTest},
+		{"security", PersonaColorSecurity},
+		{"reviewer", PersonaColorReviewer},
+		{"performance", PersonaColorPerformance},
+		{"design", PersonaColorDesign},
+		{"devops", PersonaColorDevOps},
+		{"unknown", defaultPersonaColor},
+	}
+
+	for _, testCase := range tests {
+		color := PersonaColor(testCase.personaID)
+		if color != testCase.expected {
+			testing.Errorf("PersonaColor(%s) = %s, want %s", testCase.personaID, color, testCase.expected)
+		}
 	}
 }

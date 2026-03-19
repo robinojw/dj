@@ -17,17 +17,59 @@ const (
 )
 
 var (
-	colorIdle = lipgloss.Color("245")
+	colorGreen  = lipgloss.Color("42")
+	colorRed    = lipgloss.Color("196")
+	colorGray   = lipgloss.Color("245")
+	colorIdle   = colorGray
+)
 
+var (
 	statusColors = map[string]lipgloss.Color{
-		state.StatusActive:    lipgloss.Color("42"),
+		state.StatusActive:    colorGreen,
 		state.StatusIdle:      colorIdle,
 		state.StatusCompleted: lipgloss.Color("34"),
-		state.StatusError:     lipgloss.Color("196"),
+		state.StatusError:     colorRed,
 	}
 
 	defaultStatusColor = colorIdle
 )
+
+var (
+	PersonaColorArchitect     = lipgloss.Color("33")
+	PersonaColorTest          = colorGreen
+	PersonaColorSecurity      = colorRed
+	PersonaColorReviewer      = lipgloss.Color("226")
+	PersonaColorPerformance   = lipgloss.Color("44")
+	PersonaColorDesign        = lipgloss.Color("201")
+	PersonaColorDevOps        = lipgloss.Color("208")
+	PersonaColorDocs          = lipgloss.Color("252")
+	PersonaColorAPI           = lipgloss.Color("75")
+	PersonaColorData          = lipgloss.Color("178")
+	PersonaColorAccessibility = lipgloss.Color("141")
+	defaultPersonaColor       = colorGray
+)
+
+var personaColors = map[string]lipgloss.Color{
+	"architect":     PersonaColorArchitect,
+	"test":          PersonaColorTest,
+	"security":      PersonaColorSecurity,
+	"reviewer":      PersonaColorReviewer,
+	"performance":   PersonaColorPerformance,
+	"design":        PersonaColorDesign,
+	"devops":        PersonaColorDevOps,
+	"docs":          PersonaColorDocs,
+	"api":           PersonaColorAPI,
+	"data":          PersonaColorData,
+	"accessibility": PersonaColorAccessibility,
+}
+
+func PersonaColor(personaID string) lipgloss.Color {
+	color, exists := personaColors[personaID]
+	if !exists {
+		return defaultPersonaColor
+	}
+	return color
+}
 
 const pinnedIndicator = " ✓"
 const subAgentPrefix = "↳ "
