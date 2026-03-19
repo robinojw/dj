@@ -14,6 +14,7 @@ const (
 	testSwarmCommand     = "echo"
 	testSwarmPersonaID   = "architect"
 	testSwarmPersonaName = "Architect"
+	testSwarmTask        = "Design API"
 )
 
 func TestAppModelSwarmFieldsDefault(testing *testing.T) {
@@ -106,5 +107,62 @@ func TestPersonaPickerDispatchShowsInputBar(testing *testing.T) {
 	}
 	if resultApp.inputBarIntent != IntentSpawnTask {
 		testing.Error("expected spawn task intent")
+	}
+}
+
+func TestSendMessageToAgentShowsMenu(testing *testing.T) {
+	store := state.NewThreadStore()
+	personas := []roster.PersonaDefinition{
+		{ID: testSwarmPersonaID, Name: testSwarmPersonaName},
+	}
+	agentPool := poolpkg.NewAgentPool(testSwarmCommand, []string{}, personas, testSwarmMaxAgents)
+	agentPool.Spawn(testSwarmPersonaID, testSwarmTask, "")
+	app := NewAppModel(store, WithPool(agentPool))
+
+	updated, _ := app.sendMessageToAgent()
+	resultApp := updated.(AppModel)
+
+	if !resultApp.menuVisible {
+		testing.Error("expected menu visible for agent picker")
+	}
+	if resultApp.menuIntent != MenuIntentAgentPicker {
+		testing.Error("expected agent picker intent")
+	}
+}
+
+func TestSendMessageToAgentNoAgents(testing *testing.T) {
+	store := state.NewThreadStore()
+	agentPool := poolpkg.NewAgentPool(testSwarmCommand, []string{}, nil, testSwarmMaxAgents)
+	app := NewAppModel(store, WithPool(agentPool))
+
+	updated, _ := app.sendMessageToAgent()
+	resultApp := updated.(AppModel)
+
+	if resultApp.menuVisible {
+		testing.Error("expected menu hidden when no agents")
+	}
+}
+
+func TestDispatchAgentPickShowsInputBar(testing *testing.T) {
+	store := state.NewThreadStore()
+	personas := []roster.PersonaDefinition{
+		{ID: testSwarmPersonaID, Name: testSwarmPersonaName},
+	}
+	agentPool := poolpkg.NewAgentPool(testSwarmCommand, []string{}, personas, testSwarmMaxAgents)
+	agentID, _ := agentPool.Spawn(testSwarmPersonaID, testSwarmTask, "")
+	app := NewAppModel(store, WithPool(agentPool))
+
+	item := MenuItem{Label: agentID, Key: rune(agentID[0])}
+	updated, _ := app.dispatchAgentPick(item)
+	resultApp := updated.(AppModel)
+
+	if !resultApp.inputBarVisible {
+		testing.Error("expected input bar visible after agent pick")
+	}
+	if resultApp.inputBarIntent != IntentSendMessage {
+		testing.Error("expected send message intent")
+	}
+	if resultApp.pendingTargetAgentID != agentID {
+		testing.Errorf("expected target %s, got %s", agentID, resultApp.pendingTargetAgentID)
 	}
 }
