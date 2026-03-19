@@ -166,3 +166,22 @@ func TestDispatchAgentPickShowsInputBar(testing *testing.T) {
 		testing.Errorf("expected target %s, got %s", agentID, resultApp.pendingTargetAgentID)
 	}
 }
+
+func TestToggleSwarmViewFiltersCanvas(testing *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store)
+
+	updated, _ := app.toggleSwarmView()
+	resultApp := updated.(AppModel)
+
+	if !resultApp.swarmFilter {
+		testing.Error("expected swarm filter enabled after toggle")
+	}
+
+	updated2, _ := resultApp.toggleSwarmView()
+	resultApp2 := updated2.(AppModel)
+
+	if resultApp2.swarmFilter {
+		testing.Error("expected swarm filter disabled after second toggle")
+	}
+}

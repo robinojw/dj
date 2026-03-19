@@ -132,5 +132,7 @@ func (app AppModel) killAgent() (tea.Model, tea.Cmd) {
 }
 
 func (app AppModel) toggleSwarmView() (tea.Model, tea.Cmd) {
+	app.swarmFilter = !app.swarmFilter
+	app.canvas.SetSwarmFilter(app.swarmFilter)
 	return app, nil
 }
