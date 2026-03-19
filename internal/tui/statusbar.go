@@ -7,6 +7,8 @@ import (
 )
 
 var (
+	statusBarColorRed = lipgloss.Color("196")
+
 	statusBarStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("236")).
 			Foreground(lipgloss.Color("252")).
@@ -14,78 +16,92 @@ var (
 	statusConnectedStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("42"))
 	statusDisconnectedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("196"))
+				Foreground(statusBarColorRed)
 	statusErrorStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("196")).
+				Foreground(statusBarColorRed).
 				Bold(true)
 )
 
-// StatusBar displays connection state and context info.
 type StatusBar struct {
 	connected      bool
 	threadCount    int
 	selectedThread string
 	errorMessage   string
 	width          int
+	agentCount     int
+	completedCount int
 }
 
-// NewStatusBar creates a status bar.
 func NewStatusBar() *StatusBar {
 	return &StatusBar{}
 }
 
-// SetConnected updates the connection state.
-func (s *StatusBar) SetConnected(connected bool) {
-	s.connected = connected
+func (bar *StatusBar) SetConnected(connected bool) {
+	bar.connected = connected
 	if connected {
-		s.errorMessage = ""
+		bar.errorMessage = ""
 	}
 }
 
-// SetThreadCount updates the thread count display.
-func (s *StatusBar) SetThreadCount(count int) {
-	s.threadCount = count
+func (bar *StatusBar) SetThreadCount(count int) {
+	bar.threadCount = count
 }
 
-// SetSelectedThread updates the selected thread name.
-func (s *StatusBar) SetSelectedThread(name string) {
-	s.selectedThread = name
+func (bar *StatusBar) SetSelectedThread(name string) {
+	bar.selectedThread = name
 }
 
-// SetError sets an error message.
-func (s *StatusBar) SetError(msg string) {
-	s.errorMessage = msg
+func (bar *StatusBar) SetError(msg string) {
+	bar.errorMessage = msg
 }
 
-// SetWidth sets the status bar width.
-func (s *StatusBar) SetWidth(width int) {
-	s.width = width
+func (bar *StatusBar) SetWidth(width int) {
+	bar.width = width
 }
 
-// View renders the status bar.
-func (s StatusBar) View() string {
+func (bar *StatusBar) SetAgentCount(total int, completed int) {
+	bar.agentCount = total
+	bar.completedCount = completed
+}
+
+func (bar StatusBar) View() string {
+	left := bar.renderConnectionStatus()
+	middle := bar.renderCounts()
+	right := bar.renderSelected()
+
+	content := left + middle + right
+	style := statusBarStyle.Width(bar.width)
+	return style.Render(content)
+}
+
+func (bar StatusBar) renderConnectionStatus() string {
 	var left string
-	if s.connected {
+	if bar.connected {
 		left = statusConnectedStyle.Render("● Connected")
 	} else {
 		left = statusDisconnectedStyle.Render("○ Disconnected")
 	}
 
-	if s.errorMessage != "" {
-		left += " " + statusErrorStyle.Render(s.errorMessage)
+	if bar.errorMessage != "" {
+		left += " " + statusErrorStyle.Render(bar.errorMessage)
 	}
+	return left
+}
 
+func (bar StatusBar) renderCounts() string {
 	middle := ""
-	if s.threadCount > 0 {
-		middle = fmt.Sprintf(" | %d threads", s.threadCount)
+	if bar.threadCount > 0 {
+		middle = fmt.Sprintf(" | %d threads", bar.threadCount)
 	}
-
-	right := ""
-	if s.selectedThread != "" {
-		right = fmt.Sprintf(" | %s", s.selectedThread)
+	if bar.agentCount > 0 {
+		middle += fmt.Sprintf(" | %d agents", bar.agentCount)
 	}
+	return middle
+}
 
-	content := left + middle + right
-	style := statusBarStyle.Width(s.width)
-	return style.Render(content)
+func (bar StatusBar) renderSelected() string {
+	if bar.selectedThread != "" {
+		return fmt.Sprintf(" | %s", bar.selectedThread)
+	}
+	return ""
 }

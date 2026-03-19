@@ -23,8 +23,15 @@ var headerHints = []string{
 
 const headerHintSeparator = "  "
 
+var swarmHints = []string{
+	"p: persona",
+	"m: message",
+	"K: kill agent",
+}
+
 type HeaderBar struct {
-	width int
+	width       int
+	swarmActive bool
 }
 
 func NewHeaderBar(width int) HeaderBar {
@@ -35,11 +42,20 @@ func (header *HeaderBar) SetWidth(width int) {
 	header.width = width
 }
 
+func (header *HeaderBar) SetSwarmActive(active bool) {
+	header.swarmActive = active
+}
+
 func (header HeaderBar) View() string {
 	title := headerTitleStyle.Render(headerTitle)
 
+	allHints := headerHints
+	if header.swarmActive {
+		allHints = append(allHints, swarmHints...)
+	}
+
 	hints := ""
-	for index, hint := range headerHints {
+	for index, hint := range allHints {
 		if index > 0 {
 			hints += headerHintSeparator
 		}

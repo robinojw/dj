@@ -5,43 +5,62 @@ import (
 	"testing"
 )
 
-func TestStatusBarConnected(t *testing.T) {
+const (
+	statusBarTestWidth     = 80
+	statusBarTestThreads   = 3
+	statusBarTestAgents    = 3
+	statusBarTestCompleted = 1
+	statusBarTestSelected  = "Build web app"
+	statusBarTestError     = "connection lost"
+)
+
+func TestStatusBarConnected(testing *testing.T) {
 	bar := NewStatusBar()
 	bar.SetConnected(true)
-	bar.SetThreadCount(3)
-	bar.SetSelectedThread("Build web app")
+	bar.SetThreadCount(statusBarTestThreads)
+	bar.SetSelectedThread(statusBarTestSelected)
 
 	output := bar.View()
 
 	if !strings.Contains(output, "Connected") {
-		t.Errorf("expected Connected in output:\n%s", output)
+		testing.Errorf("expected Connected in output:\n%s", output)
 	}
 	if !strings.Contains(output, "3 threads") {
-		t.Errorf("expected thread count in output:\n%s", output)
+		testing.Errorf("expected thread count in output:\n%s", output)
 	}
-	if !strings.Contains(output, "Build web app") {
-		t.Errorf("expected selected thread in output:\n%s", output)
+	if !strings.Contains(output, statusBarTestSelected) {
+		testing.Errorf("expected selected thread in output:\n%s", output)
 	}
 }
 
-func TestStatusBarDisconnected(t *testing.T) {
+func TestStatusBarDisconnected(testing *testing.T) {
 	bar := NewStatusBar()
 	bar.SetConnected(false)
 
 	output := bar.View()
 
 	if !strings.Contains(output, "Disconnected") {
-		t.Errorf("expected Disconnected in output:\n%s", output)
+		testing.Errorf("expected Disconnected in output:\n%s", output)
 	}
 }
 
-func TestStatusBarError(t *testing.T) {
+func TestStatusBarError(testing *testing.T) {
 	bar := NewStatusBar()
-	bar.SetError("connection lost")
+	bar.SetError(statusBarTestError)
 
 	output := bar.View()
 
-	if !strings.Contains(output, "connection lost") {
-		t.Errorf("expected error in output:\n%s", output)
+	if !strings.Contains(output, statusBarTestError) {
+		testing.Errorf("expected error in output:\n%s", output)
+	}
+}
+
+func TestStatusBarAgentCount(testing *testing.T) {
+	bar := NewStatusBar()
+	bar.SetWidth(statusBarTestWidth)
+	bar.SetAgentCount(statusBarTestAgents, statusBarTestCompleted)
+	view := bar.View()
+	if !strings.Contains(view, "3 agents") {
+		testing.Error("expected agent count in status bar")
 	}
 }

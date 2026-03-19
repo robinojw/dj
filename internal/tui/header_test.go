@@ -7,32 +7,47 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func TestHeaderBarRendersTitle(t *testing.T) {
-	header := NewHeaderBar(80)
+const (
+	headerTestWidth    = 80
+	headerTestWidthLg  = 120
+	headerTestMaxWidth = 120
+)
+
+func TestHeaderBarRendersTitle(testing *testing.T) {
+	header := NewHeaderBar(headerTestWidth)
 	output := header.View()
 
 	if !strings.Contains(output, "DJ") {
-		t.Errorf("expected title in header, got:\n%s", output)
+		testing.Errorf("expected title in header, got:\n%s", output)
 	}
 }
 
-func TestHeaderBarRendersShortcuts(t *testing.T) {
-	header := NewHeaderBar(80)
+func TestHeaderBarRendersShortcuts(testing *testing.T) {
+	header := NewHeaderBar(headerTestWidth)
 	output := header.View()
 
 	if !strings.Contains(output, "n: new") {
-		t.Errorf("expected shortcut hints in header, got:\n%s", output)
+		testing.Errorf("expected shortcut hints in header, got:\n%s", output)
 	}
 }
 
-func TestHeaderBarFitsWidth(t *testing.T) {
-	header := NewHeaderBar(120)
+func TestHeaderBarFitsWidth(testing *testing.T) {
+	header := NewHeaderBar(headerTestWidthLg)
 	output := header.View()
 
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
-		if lipgloss.Width(line) > 120 {
-			t.Errorf("header exceeds width 120: len=%d", lipgloss.Width(line))
+		if lipgloss.Width(line) > headerTestMaxWidth {
+			testing.Errorf("header exceeds width %d: len=%d", headerTestMaxWidth, lipgloss.Width(line))
 		}
+	}
+}
+
+func TestHeaderSwarmHints(testing *testing.T) {
+	header := NewHeaderBar(headerTestWidth)
+	header.SetSwarmActive(true)
+	view := header.View()
+	if !strings.Contains(view, "p: persona") {
+		testing.Error("expected persona hint when swarm is active")
 	}
 }
