@@ -63,10 +63,18 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return app, app.createThread()
 	case "?":
 		app.helpVisible = !app.helpVisible
-	case " ", "s":
+	case " ":
 		return app.togglePin()
 	case "k":
 		return app.killSession()
+	case "p":
+		return app.showPersonaPicker()
+	case "m":
+		return app.sendMessageToAgent()
+	case "s":
+		return app.toggleSwarmView()
+	case "K":
+		return app.killAgent()
 	}
 	return app, nil
 }
