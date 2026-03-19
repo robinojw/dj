@@ -156,12 +156,25 @@ func (app AppModel) handleAgentMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app.handleCollabSpawn(msg)
 	case CollabCloseMsg:
 		return app.handleCollabClose(msg)
+	default:
+		return app.handleProtocolAndPoolMsg(msg)
+	}
+}
+
+func (app AppModel) handleProtocolAndPoolMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
 	case ThreadStatusChangedMsg:
 		return app.handleThreadStatusChanged(msg)
 	case V2ExecApprovalMsg:
 		return app.handleV2ExecApproval(msg)
 	case V2FileApprovalMsg:
 		return app.handleV2FileApproval(msg)
+	case SpawnRequestMsg:
+		return app.handleSpawnRequest(msg)
+	case AgentMessageMsg:
+		return app.handleAgentMessage(msg)
+	case AgentCompleteMsg:
+		return app.handleAgentComplete(msg)
 	}
 	return app, nil
 }
