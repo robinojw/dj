@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,22 +42,27 @@ func runApp(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	store := state.NewThreadStore()
 	var opts []tui.AppOption
+	var agentPool *pool.AgentPool
 
 	personas, signals := loadRoster(cfg)
 	hasPersonas := len(personas) > 0
 	shouldUsePool := hasPersonas && cfg.Roster.AutoOrchestrate
 
 	if shouldUsePool {
-		agentPool := pool.NewAgentPool(
+		agentPool = pool.NewAgentPool(
 			cfg.AppServer.Command,
 			cfg.AppServer.Args,
 			personas,
 			cfg.Pool.MaxAgents,
 		)
+		agentPool.SetContext(ctx)
 		opts = append(opts, tui.WithPool(agentPool))
-		_ = signals
+		bootOrchestrator(agentPool, signals, store)
 	} else {
 		client := appserver.NewClient(cfg.AppServer.Command, cfg.AppServer.Args...)
 		defer client.Stop()
@@ -73,7 +79,26 @@ func runApp(cmd *cobra.Command, args []string) error {
 		finalApp.StopAllPTYSessions()
 	}
 
+	if agentPool != nil {
+		agentPool.StopAll()
+	}
+
 	return err
+}
+
+func bootOrchestrator(agentPool *pool.AgentPool, signals *roster.RepoSignals, store *state.ThreadStore) {
+	agentID, err := agentPool.SpawnOrchestrator(signals)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "orchestrator: %v\n", err)
+		return
+	}
+	store.Add(agentID, "Orchestrator")
+	thread, exists := store.Get(agentID)
+	if !exists {
+		return
+	}
+	thread.AgentProcessID = agentID
+	thread.AgentRole = pool.RoleOrchestrator
 }
 
 func loadRoster(cfg *config.Config) ([]roster.PersonaDefinition, *roster.RepoSignals) {
