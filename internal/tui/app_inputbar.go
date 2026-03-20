@@ -40,6 +40,8 @@ func (app AppModel) submitInputBar() (tea.Model, tea.Cmd) {
 		return app.executeSpawn(value)
 	case IntentSendMessage:
 		return app.executeSendMessage(value)
+	case IntentOrchestratorTask:
+		return app.executeOrchestratorTask(value)
 	}
 	return app.dismissInputBar()
 }
@@ -64,6 +66,29 @@ func (app AppModel) executeSpawn(task string) (tea.Model, tea.Cmd) {
 	app.store.UpdateStatus(agentID, "active", "")
 	app.statusBar.SetThreadCount(len(app.store.All()))
 	app.tree.Refresh()
+	return app, nil
+}
+
+func (app AppModel) executeOrchestratorTask(task string) (tea.Model, tea.Cmd) {
+	app.inputBarVisible = false
+	app.inputBar.Reset()
+
+	if app.pool == nil {
+		return app, nil
+	}
+
+	orchestrator, exists := app.pool.GetOrchestrator()
+	if !exists {
+		app.statusBar.SetError("No orchestrator running")
+		return app, nil
+	}
+
+	if orchestrator.Client == nil {
+		app.statusBar.SetError("Orchestrator not connected")
+		return app, nil
+	}
+
+	orchestrator.Client.SendUserInput(task)
 	return app, nil
 }
 

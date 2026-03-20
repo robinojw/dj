@@ -167,6 +167,39 @@ func TestDispatchAgentPickShowsInputBar(testing *testing.T) {
 	}
 }
 
+func TestPromptOrchestratorTaskShowsInputBar(testing *testing.T) {
+	store := state.NewThreadStore()
+	personas := []roster.PersonaDefinition{
+		{ID: testSwarmPersonaID, Name: testSwarmPersonaName},
+	}
+	agentPool := poolpkg.NewAgentPool(testSwarmCommand, []string{}, personas, testSwarmMaxAgents)
+	agentPool.SpawnOrchestrator(nil)
+	app := NewAppModel(store, WithPool(agentPool))
+
+	updated, _ := app.promptOrchestratorTask()
+	resultApp := updated.(AppModel)
+
+	if !resultApp.inputBarVisible {
+		testing.Error("expected input bar visible for orchestrator task")
+	}
+	if resultApp.inputBarIntent != IntentOrchestratorTask {
+		testing.Error("expected orchestrator task intent")
+	}
+}
+
+func TestPromptOrchestratorTaskNoOrchestrator(testing *testing.T) {
+	store := state.NewThreadStore()
+	agentPool := poolpkg.NewAgentPool(testSwarmCommand, []string{}, nil, testSwarmMaxAgents)
+	app := NewAppModel(store, WithPool(agentPool))
+
+	updated, _ := app.promptOrchestratorTask()
+	resultApp := updated.(AppModel)
+
+	if resultApp.inputBarVisible {
+		testing.Error("expected input bar hidden when no orchestrator")
+	}
+}
+
 func TestToggleSwarmViewFiltersCanvas(testing *testing.T) {
 	store := state.NewThreadStore()
 	app := NewAppModel(store)

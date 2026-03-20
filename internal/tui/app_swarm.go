@@ -117,6 +117,23 @@ func extractAgentID(label string) string {
 	return label
 }
 
+func (app AppModel) promptOrchestratorTask() (tea.Model, tea.Cmd) {
+	if app.pool == nil {
+		return app, nil
+	}
+
+	_, exists := app.pool.GetOrchestrator()
+	if !exists {
+		app.statusBar.SetError("No orchestrator running")
+		return app, nil
+	}
+
+	app.inputBar = NewInputBarModel("Task" + inputBarPromptSuffix)
+	app.inputBarVisible = true
+	app.inputBarIntent = IntentOrchestratorTask
+	return app, nil
+}
+
 func (app AppModel) killAgent() (tea.Model, tea.Cmd) {
 	if app.pool == nil {
 		return app, nil

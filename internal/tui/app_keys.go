@@ -64,7 +64,7 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "t":
 		app.toggleCanvasMode()
 	case "n":
-		return app, app.createThread()
+		return app.handleNewTask()
 	case "?":
 		app.helpVisible = !app.helpVisible
 	case " ":
@@ -81,6 +81,13 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return app.killAgent()
 	}
 	return app, nil
+}
+
+func (app AppModel) handleNewTask() (tea.Model, tea.Cmd) {
+	if app.pool != nil {
+		return app.promptOrchestratorTask()
+	}
+	return app, app.createThread()
 }
 
 func (app AppModel) createThread() tea.Cmd {

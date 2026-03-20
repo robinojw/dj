@@ -13,6 +13,7 @@ type InputIntent int
 const (
 	IntentSpawnTask InputIntent = iota
 	IntentSendMessage
+	IntentOrchestratorTask
 )
 
 type ThreadCreatedMsg struct {
