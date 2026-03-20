@@ -3,14 +3,16 @@ package state
 import "testing"
 
 const (
-	testThreadID  = "t-1"
-	testTitle     = "Test"
-	testMessageID = "m-1"
-	testExecID    = "e-1"
-	testGreeting  = "Hello"
-	testActivity  = "Running: git status"
+	testThreadID      = "t-1"
+	testTitle         = "Test"
+	testMessageID     = "m-1"
+	testExecID        = "e-1"
+	testGreeting      = "Hello"
+	testActivity      = "Running: git status"
+	testAgentProcess  = "architect-1"
 
-	errExpectedHello = "expected Hello, got %s"
+	errExpectedHello  = "expected Hello, got %s"
+	errExpectedSGotS  = "expected %s, got %s"
 )
 
 func TestNewThreadState(testing *testing.T) {
@@ -67,7 +69,7 @@ func TestThreadStateSetActivity(testing *testing.T) {
 	thread.SetActivity(testActivity)
 
 	if thread.Activity != testActivity {
-		testing.Errorf("expected %s, got %s", testActivity, thread.Activity)
+		testing.Errorf(errExpectedSGotS, testActivity, thread.Activity)
 	}
 }
 
@@ -78,5 +80,16 @@ func TestThreadStateClearActivity(testing *testing.T) {
 
 	if thread.Activity != "" {
 		testing.Errorf("expected empty activity, got %s", thread.Activity)
+	}
+}
+
+func TestThreadStateAgentProcessID(testing *testing.T) {
+	thread := NewThreadState(testThreadID, testTitle)
+	if thread.AgentProcessID != "" {
+		testing.Error("expected empty AgentProcessID for new thread")
+	}
+	thread.AgentProcessID = testAgentProcess
+	if thread.AgentProcessID != testAgentProcess {
+		testing.Errorf(errExpectedSGotS, testAgentProcess, thread.AgentProcessID)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	poolpkg "github.com/robinojw/dj/internal/pool"
 	"github.com/robinojw/dj/internal/state"
 )
 
@@ -35,6 +36,7 @@ const (
 	appTestExpectSessionFocus = "expected session focus, got %d"
 	appTestExpectCanvasFocus  = "expected FocusPaneCanvas, got %d"
 	appTestExpectedStrFmt     = "expected %s, got %s"
+	appTestPoolMaxAgents      = 10
 )
 
 func TestAppHandlesArrowKeys(test *testing.T) {
@@ -272,3 +274,21 @@ func TestAppHandlesThreadCreatedMsg(test *testing.T) {
 		test.Errorf(appTestExpectSessionFocus, appModel.FocusPane())
 	}
 }
+
+func TestNewAppModelWithPool(testing *testing.T) {
+	store := state.NewThreadStore()
+	agentPool := poolpkg.NewAgentPool(appTestCmdEcho, []string{}, nil, appTestPoolMaxAgents)
+	app := NewAppModel(store, WithPool(agentPool))
+	if app.pool == nil {
+		testing.Error("expected pool to be set")
+	}
+}
+
+func TestNewAppModelWithoutPool(testing *testing.T) {
+	store := state.NewThreadStore()
+	app := NewAppModel(store)
+	if app.pool != nil {
+		testing.Error("expected pool to be nil for backward compatibility")
+	}
+}
+

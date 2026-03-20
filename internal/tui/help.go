@@ -52,6 +52,10 @@ var keybindings = []keybinding{
 	{"Ctrl+B x", "Unpin focused session"},
 	{"Ctrl+B z", "Toggle zoom session"},
 	{"Mouse Wheel", "Scroll session up/down"},
+	{"p", "Spawn persona agent"},
+	{"m", "Message selected agent"},
+	{"s", "Toggle swarm view"},
+	{"K", "Kill selected agent"},
 	{"?", "Toggle help"},
 	{"Ctrl+C", "Quit"},
 }

@@ -11,6 +11,10 @@ func (app AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return app.handleHelpKey(msg)
 	}
 
+	if app.inputBarVisible {
+		return app.handleInputBarKey(msg)
+	}
+
 	if app.menuVisible {
 		return app.handleMenuKey(msg)
 	}
@@ -60,15 +64,30 @@ func (app AppModel) handleRune(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "t":
 		app.toggleCanvasMode()
 	case "n":
-		return app, app.createThread()
+		return app.handleNewTask()
 	case "?":
 		app.helpVisible = !app.helpVisible
-	case " ", "s":
+	case " ":
 		return app.togglePin()
 	case "k":
 		return app.killSession()
+	case "p":
+		return app.showPersonaPicker()
+	case "m":
+		return app.sendMessageToAgent()
+	case "s":
+		return app.toggleSwarmView()
+	case "K":
+		return app.killAgent()
 	}
 	return app, nil
+}
+
+func (app AppModel) handleNewTask() (tea.Model, tea.Cmd) {
+	if app.pool != nil {
+		return app.promptOrchestratorTask()
+	}
+	return app, app.createThread()
 }
 
 func (app AppModel) createThread() tea.Cmd {

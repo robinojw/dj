@@ -5,6 +5,26 @@ import (
 	"fmt"
 )
 
+const (
+	initClientName    = "dj"
+	initClientVersion = "0.1.0"
+)
+
+func (client *Client) Initialize() error {
+	requestID := client.NextID()
+	request := &JSONRPCRequest{
+		jsonRPCOutgoing: jsonRPCOutgoing{JSONRPC: jsonRPCVersion, ID: requestID},
+		Method:          MethodInitialize,
+		Params: map[string]interface{}{
+			"clientInfo": map[string]string{
+				"name":    initClientName,
+				"version": initClientVersion,
+			},
+		},
+	}
+	return client.Send(request)
+}
+
 // Send writes a JSON-RPC request to the child's stdin as a JSONL line.
 func (client *Client) Send(request *JSONRPCRequest) error {
 	return client.writeJSON(request)

@@ -3,6 +3,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/robinojw/dj/internal/appserver"
+	"github.com/robinojw/dj/internal/pool"
 	"github.com/robinojw/dj/internal/state"
 )
 
@@ -34,8 +35,16 @@ type AppModel struct {
 	sessionCounter   *int
 	interactiveCmd   string
 	interactiveArgs  []string
-	header           HeaderBar
-	sessionPanel     SessionPanelModel
+	header               HeaderBar
+	sessionPanel         SessionPanelModel
+	pool                 *pool.AgentPool
+	inputBar             InputBarModel
+	inputBarVisible      bool
+	inputBarIntent       InputIntent
+	menuIntent           MenuIntent
+	pendingPersonaID     string
+	pendingTargetAgentID string
+	swarmFilter          bool
 }
 
 func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
@@ -56,6 +65,10 @@ func NewAppModel(store *state.ThreadStore, opts ...AppOption) AppModel {
 	for _, opt := range opts {
 		opt(&app)
 	}
+	hasPool := app.pool != nil
+	if hasPool {
+		app.header.SetSwarmActive(true)
+	}
 	return app
 }
 
@@ -64,6 +77,12 @@ type AppOption func(*AppModel)
 func WithClient(client *appserver.Client) AppOption {
 	return func(app *AppModel) {
 		app.client = client
+	}
+}
+
+func WithPool(agentPool *pool.AgentPool) AppOption {
+	return func(app *AppModel) {
+		app.pool = agentPool
 	}
 }
 
@@ -87,6 +106,12 @@ func (app AppModel) HelpVisible() bool {
 }
 
 func (app AppModel) Init() tea.Cmd {
+	if app.pool != nil {
+		return tea.Batch(
+			app.listenForPoolEvents(),
+			app.listenForPTYEvents(),
+		)
+	}
 	if app.client == nil {
 		return nil
 	}
@@ -114,6 +139,8 @@ func (app AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app, nil
 	case ThreadCreatedMsg:
 		return app.handleThreadCreated(msg)
+	case PoolEventMsg:
+		return app.handlePoolEvent(msg)
 	default:
 		return app.handleAgentMsg(msg)
 	}
@@ -148,12 +175,25 @@ func (app AppModel) handleAgentMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app.handleCollabSpawn(msg)
 	case CollabCloseMsg:
 		return app.handleCollabClose(msg)
+	default:
+		return app.handleProtocolAndPoolMsg(msg)
+	}
+}
+
+func (app AppModel) handleProtocolAndPoolMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
 	case ThreadStatusChangedMsg:
 		return app.handleThreadStatusChanged(msg)
 	case V2ExecApprovalMsg:
 		return app.handleV2ExecApproval(msg)
 	case V2FileApprovalMsg:
 		return app.handleV2FileApproval(msg)
+	case SpawnRequestMsg:
+		return app.handleSpawnRequest(msg)
+	case AgentMessageMsg:
+		return app.handleAgentMessage(msg)
+	case AgentCompleteMsg:
+		return app.handleAgentComplete(msg)
 	}
 	return app, nil
 }

@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/robinojw/dj/internal/state"
@@ -17,28 +17,72 @@ const (
 )
 
 var (
-	colorIdle = lipgloss.Color("245")
+	colorGreen  = lipgloss.Color("42")
+	colorRed    = lipgloss.Color("196")
+	colorGray   = lipgloss.Color("245")
+	colorIdle   = colorGray
+)
 
+var (
 	statusColors = map[string]lipgloss.Color{
-		state.StatusActive:    lipgloss.Color("42"),
+		state.StatusActive:    colorGreen,
 		state.StatusIdle:      colorIdle,
 		state.StatusCompleted: lipgloss.Color("34"),
-		state.StatusError:     lipgloss.Color("196"),
+		state.StatusError:     colorRed,
 	}
 
 	defaultStatusColor = colorIdle
 )
+
+var (
+	PersonaColorArchitect     = lipgloss.Color("33")
+	PersonaColorTest          = colorGreen
+	PersonaColorSecurity      = colorRed
+	PersonaColorReviewer      = lipgloss.Color("226")
+	PersonaColorPerformance   = lipgloss.Color("44")
+	PersonaColorDesign        = lipgloss.Color("201")
+	PersonaColorDevOps        = lipgloss.Color("208")
+	PersonaColorDocs          = lipgloss.Color("252")
+	PersonaColorAPI           = lipgloss.Color("75")
+	PersonaColorData          = lipgloss.Color("178")
+	PersonaColorAccessibility = lipgloss.Color("141")
+	defaultPersonaColor       = colorGray
+)
+
+var personaColors = map[string]lipgloss.Color{
+	"architect":     PersonaColorArchitect,
+	"test":          PersonaColorTest,
+	"security":      PersonaColorSecurity,
+	"reviewer":      PersonaColorReviewer,
+	"performance":   PersonaColorPerformance,
+	"design":        PersonaColorDesign,
+	"devops":        PersonaColorDevOps,
+	"docs":          PersonaColorDocs,
+	"api":           PersonaColorAPI,
+	"data":          PersonaColorData,
+	"accessibility": PersonaColorAccessibility,
+}
+
+func PersonaColor(personaID string) lipgloss.Color {
+	color, exists := personaColors[personaID]
+	if !exists {
+		return defaultPersonaColor
+	}
+	return color
+}
 
 const pinnedIndicator = " ✓"
 const subAgentPrefix = "↳ "
 const roleIndent = "  "
 
 type CardModel struct {
-	thread   *state.ThreadState
-	selected bool
-	pinned   bool
-	width    int
-	height   int
+	thread       *state.ThreadState
+	selected     bool
+	pinned       bool
+	orchestrator bool
+	personaBadge string
+	width        int
+	height       int
 }
 
 func NewCardModel(thread *state.ThreadState, selected bool, pinned bool) CardModel {
@@ -60,6 +104,14 @@ func (card *CardModel) SetSize(width int, height int) {
 	}
 	card.width = width
 	card.height = height
+}
+
+func (card *CardModel) SetPersonaBadge(badge string) {
+	card.personaBadge = badge
+}
+
+func (card *CardModel) SetOrchestrator(isOrchestrator bool) {
+	card.orchestrator = isOrchestrator
 }
 
 func (card CardModel) View() string {
@@ -107,30 +159,50 @@ func (card CardModel) buildStatusLine() string {
 }
 
 func (card CardModel) buildContent(title string, statusLine string) string {
+	lines := []string{title}
+
+	hasBadge := card.personaBadge != ""
+	if hasBadge {
+		badgeColor := PersonaColor(strings.ToLower(card.personaBadge))
+		badgeLine := lipgloss.NewStyle().
+			Foreground(badgeColor).
+			Bold(true).
+			Render(card.personaBadge)
+		lines = append(lines, badgeLine)
+	}
+
 	isSubAgent := card.thread.ParentID != ""
 	hasRole := isSubAgent && card.thread.AgentRole != ""
 	if hasRole {
 		roleLine := lipgloss.NewStyle().
 			Foreground(colorIdle).
 			Render(roleIndent + card.thread.AgentRole)
-		return fmt.Sprintf("%s\n%s\n%s", title, roleLine, statusLine)
+		lines = append(lines, roleLine)
 	}
-	return fmt.Sprintf("%s\n%s", title, statusLine)
+
+	lines = append(lines, statusLine)
+	return strings.Join(lines, "\n")
 }
 
 func (card CardModel) buildBorderStyle() lipgloss.Style {
 	style := lipgloss.NewStyle().
 		Width(card.width).
 		Height(card.height).
-		Border(lipgloss.RoundedBorder()).
 		Padding(0, 1)
 
+	if card.orchestrator {
+		return style.
+			Border(lipgloss.ThickBorder()).
+			BorderForeground(lipgloss.Color("214"))
+	}
+
 	if card.selected {
-		style = style.
+		return style.
 			Border(lipgloss.DoubleBorder()).
 			BorderForeground(lipgloss.Color("39"))
 	}
-	return style
+
+	return style.Border(lipgloss.RoundedBorder())
 }
 
 func truncate(text string, maxLen int) string {

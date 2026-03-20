@@ -1,5 +1,21 @@
 package tui
 
+type MenuIntent int
+
+const (
+	MenuIntentThread MenuIntent = iota
+	MenuIntentPersonaPicker
+	MenuIntentAgentPicker
+)
+
+type InputIntent int
+
+const (
+	IntentSpawnTask InputIntent = iota
+	IntentSendMessage
+	IntentOrchestratorTask
+)
+
 type ThreadCreatedMsg struct {
 	ThreadID string
 	Title    string
