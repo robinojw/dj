@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/robinojw/dj/internal/appserver"
+	"github.com/robinojw/dj/internal/roster"
 )
 
 const (
@@ -16,6 +17,10 @@ const (
 	testProcessTimeout = 5 * time.Second
 	testJSONRPCVersion = "2.0"
 	testAgentID        = "test-agent-1"
+	testCatCommand     = "cat"
+	testSpawnFailed    = "Spawn failed: %v"
+	testExpectedStatus = "expected status %s, got %s"
+	testAgentExists    = "expected agent to exist"
 )
 
 func TestSpawnRejectsUnknownPersona(testing *testing.T) {
@@ -93,7 +98,7 @@ func TestStartAgentProcess(testing *testing.T) {
 		Status: AgentStatusSpawning,
 	}
 
-	err := startAgentProcess(ctx, agent, "cat", []string{}, events, "hello world")
+	err := startAgentProcess(ctx, agent, testCatCommand, []string{}, events, "hello world")
 	if err != nil {
 		testing.Fatalf("startAgentProcess failed: %v", err)
 	}
@@ -103,7 +108,7 @@ func TestStartAgentProcess(testing *testing.T) {
 		testing.Fatal("expected client to be set")
 	}
 	if agent.Status != AgentStatusActive {
-		testing.Errorf("expected status %s, got %s", AgentStatusActive, agent.Status)
+		testing.Errorf(testExpectedStatus, AgentStatusActive, agent.Status)
 	}
 
 	select {
@@ -129,5 +134,56 @@ func TestStartAgentProcessBadCommand(testing *testing.T) {
 	err := startAgentProcess(ctx, agent, "nonexistent-binary-xyz", []string{}, events, "hello")
 	if err == nil {
 		testing.Error("expected error for nonexistent command")
+	}
+}
+
+func TestSpawnLiveStartsProcess(testing *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), testProcessTimeout)
+	defer cancel()
+
+	personas := []roster.PersonaDefinition{
+		{ID: testPersonaArchID, Name: testPersonaArchName, Content: "System design specialist."},
+	}
+	agentPool := NewAgentPool(testCatCommand, []string{}, personas, DefaultMaxAgents)
+	agentPool.SetContext(ctx)
+	defer agentPool.StopAll()
+
+	agentID, err := agentPool.Spawn(testPersonaArchID, testTask, "")
+	if err != nil {
+		testing.Fatalf(testSpawnFailed, err)
+	}
+
+	agent, exists := agentPool.Get(agentID)
+	if !exists {
+		testing.Fatal(testAgentExists)
+	}
+	if agent.Client == nil {
+		testing.Fatal("expected client to be set on live spawn")
+	}
+	if agent.Status != AgentStatusActive {
+		testing.Errorf(testExpectedStatus, AgentStatusActive, agent.Status)
+	}
+}
+
+func TestSpawnWithoutContextBookkeepingOnly(testing *testing.T) {
+	personas := []roster.PersonaDefinition{
+		{ID: testPersonaArchID, Name: testPersonaArchName},
+	}
+	agentPool := NewAgentPool("echo", []string{}, personas, DefaultMaxAgents)
+
+	agentID, err := agentPool.Spawn(testPersonaArchID, testTask, "")
+	if err != nil {
+		testing.Fatalf(testSpawnFailed, err)
+	}
+
+	agent, exists := agentPool.Get(agentID)
+	if !exists {
+		testing.Fatal(testAgentExists)
+	}
+	if agent.Client != nil {
+		testing.Error("expected client to be nil without context")
+	}
+	if agent.Status != AgentStatusSpawning {
+		testing.Errorf(testExpectedStatus, AgentStatusSpawning, agent.Status)
 	}
 }
